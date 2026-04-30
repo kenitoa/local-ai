@@ -61,6 +61,12 @@ def fetch_one(sql: str, params: tuple | dict | None = None) -> dict[str, Any] | 
         return cur.fetchone()
 
 
+def fetch_all(sql: str, params: tuple | dict | None = None) -> list[dict[str, Any]]:
+    with get_cursor(commit=False) as cur:
+        cur.execute(sql, params or ())
+        return list(cur.fetchall())
+
+
 def ping() -> bool:
     try:
         conn = connect()

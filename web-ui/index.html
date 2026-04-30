@@ -2,27 +2,1047 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>local-ai web-ui</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>local-ai · Web UI</title>
   <style>
-    body { font-family: system-ui, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:2rem; }
-    .card { max-width: 640px; margin: 4rem auto; background:#1e293b; padding: 2rem; border-radius: 12px; }
-    code { background:#0f172a; padding:2px 6px; border-radius:4px; }
-    .ok { color:#22c55e; font-weight:bold; }
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2c;
+      --panel-2: #1b2640;
+      --border: #243049;
+      --text: #e6edf7;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --code-bg: #060b18;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      display: grid; grid-template-columns: 240px 1fr; min-height: 100vh;
+    }
+    /* Sidebar */
+    aside.sidebar {
+      background: var(--panel); border-right: 1px solid var(--border);
+      padding: 1.25rem 0.75rem; display: flex; flex-direction: column; gap: 0.25rem;
+      position: sticky; top: 0; height: 100vh;
+    }
+    .brand { font-weight: 800; font-size: 1.15rem; padding: 0.5rem 0.75rem 1rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
+    .brand .sub { display: block; font-size: 0.7rem; font-weight: 500; color: var(--muted); margin-top: 0.15rem; }
+    nav button.nav-item {
+      background: transparent; color: var(--text); border: none; text-align: left;
+      padding: 0.6rem 0.75rem; border-radius: 8px; cursor: pointer; font-size: 0.95rem;
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    nav button.nav-item:hover { background: var(--panel-2); }
+    nav button.nav-item.active { background: var(--accent); color: #fff; font-weight: 600; }
+    .nav-num { display: inline-block; width: 22px; height: 22px; border-radius: 6px; background: var(--panel-2); color: var(--muted); text-align: center; font-size: 0.75rem; line-height: 22px; }
+    nav button.nav-item.active .nav-num { background: rgba(255,255,255,0.18); color: #fff; }
+    .sidebar-footer { margin-top: auto; padding: 0.75rem; font-size: 0.75rem; color: var(--muted); border-top: 1px solid var(--border); }
+
+    /* Main */
+    main { padding: 1.5rem 2rem; overflow-x: auto; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    h1, h2, h3 { margin: 0 0 0.5rem; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.1rem; color: var(--text); }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .col { flex: 1 1 320px; }
+
+    /* Card */
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.1rem 1.25rem; margin-bottom: 1rem;
+    }
+    .card h2 { margin-bottom: 0.6rem; }
+
+    /* Inputs */
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.3rem; }
+    input[type=text], input[type=search], select, textarea {
+      width: 100%; padding: 0.55rem 0.7rem; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--code-bg);
+      color: var(--text); font-size: 0.92rem; font-family: inherit;
+    }
+    textarea { min-height: 180px; font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace; }
+    textarea.code { min-height: 240px; }
+    input[type=file] { color: var(--muted); }
+    button.primary, button.secondary, button.danger {
+      border: none; padding: 0.55rem 1rem; border-radius: 8px; cursor: pointer;
+      font-weight: 600; font-size: 0.92rem;
+    }
+    button.primary { background: var(--accent); color: #fff; }
+    button.primary:hover { background: var(--accent-hover); }
+    button.primary:disabled { background: #475569; cursor: not-allowed; }
+    button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+    button.secondary:hover { background: #243049; }
+    button.danger { background: #7f1d1d; color: #fff; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+
+    /* Badges */
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-weight: 700; font-size: 0.78rem; }
+    .badge.gpu { background: #14532d; color: #bbf7d0; }
+    .badge.cpu { background: #78350f; color: #fde68a; }
+    .badge.unknown { background: #334155; color: #cbd5e1; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+    .pill.up { background: rgba(34,197,94,0.15); color: var(--ok); }
+    .pill.down { background: rgba(239,68,68,0.15); color: var(--bad); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot.up { background: var(--ok); }
+    .dot.down { background: var(--bad); }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 0.55rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover { background: var(--panel-2); }
+
+    /* Code blocks */
+    pre.code, .code-block {
+      background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.75rem; max-height: 420px; overflow: auto; font-size: 0.84rem;
+      font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace; white-space: pre;
+    }
+
+    /* Compare grid */
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .compare h3 { font-size: 0.95rem; margin-bottom: 0.4rem; color: var(--muted); }
+
+    /* Stat tiles for dashboard */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
+    .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+    .stat .v { font-size: 1.5rem; font-weight: 700; margin-top: 0.2rem; }
+    .stat .k { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Misc */
+    .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .grow { flex: 1; }
+    .img-preview { max-width: 100%; max-height: 360px; border-radius: 8px; border: 1px solid var(--border); }
+    .toast {
+      position: fixed; right: 1rem; bottom: 1rem; padding: 0.6rem 0.9rem;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 0.9rem;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4); z-index: 50;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { border-color: var(--bad); }
+    .toast.ok { border-color: var(--ok); }
+
+    @media (max-width: 880px) {
+      body { grid-template-columns: 1fr; }
+      aside.sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
+      aside.sidebar .brand { width: 100%; }
+      .compare { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>local-ai</h1>
-    <p>Step 2: Docker Compose 기본 실행 환경</p>
-    <p>Web UI <span class="ok">OK</span></p>
-    <p>Backend health: <code id="be">…</code></p>
-  </div>
-  <script>
-    fetch('/').catch(()=>{});
-    fetch((window.BACKEND_URL || 'http://localhost:8000') + '/health')
-      .then(r => r.json())
-      .then(j => document.getElementById('be').textContent = JSON.stringify(j))
-      .catch(e => document.getElementById('be').textContent = 'unreachable');
-  </script>
+  <aside class="sidebar">
+    <div class="brand">local-ai
+      <span class="sub">7단계 · Web UI</span>
+    </div>
+    <nav>
+      <button class="nav-item active" data-screen="dashboard"><span class="nav-num">1</span>대시보드</button>
+      <button class="nav-item" data-screen="code-input"><span class="nav-num">2</span>소스코드 입력</button>
+      <button class="nav-item" data-screen="image-upload"><span class="nav-num">3</span>이미지 업로드</button>
+      <button class="nav-item" data-screen="result"><span class="nav-num">4</span>결과 화면</button>
+      <button class="nav-item" data-screen="search"><span class="nav-num">5</span>저장된 답변 검색</button>
+      <button class="nav-item" data-screen="system"><span class="nav-num">6</span>시스템 상태</button>
+      <button class="nav-item" data-screen="language"><span class="nav-num">7</span>언어 호환</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div>모드: <span id="sidebar-mode-badge" class="badge unknown">…</span></div>
+      <div style="margin-top:6px">Backend: <span id="sidebar-backend">…</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- =========================================================== -->
+    <!-- 1) 대시보드 -->
+    <!-- =========================================================== -->
+    <section id="screen-dashboard" class="screen active">
+      <h1>대시보드</h1>
+      <p class="muted">전체 상태 요약과 빠른 작업 메뉴입니다.</p>
+
+      <div class="card">
+        <div class="stats">
+          <div class="stat">
+            <div class="k">실행 모드</div>
+            <div class="v"><span id="db-mode-badge" class="badge unknown">…</span></div>
+            <div class="muted" id="db-mode-detail">감지 결과 로딩 중…</div>
+          </div>
+          <div class="stat">
+            <div class="k">서비스 상태</div>
+            <div class="v" id="db-services-up">- / -</div>
+            <div class="muted">정상/전체 서비스</div>
+          </div>
+          <div class="stat">
+            <div class="k">저장된 답변</div>
+            <div class="v" id="db-answers">…</div>
+            <div class="muted">model_answers 누적</div>
+          </div>
+          <div class="stat">
+            <div class="k">데이터 파일</div>
+            <div class="v" id="db-files">…</div>
+            <div class="muted">data/ 하위 카테고리 합계</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>빠른 작업</h2>
+        <div class="actions">
+          <button class="primary" data-jump="code-input">소스코드 입력</button>
+          <button class="primary" data-jump="image-upload">이미지 업로드</button>
+          <button class="secondary" data-jump="search">저장된 답변 검색</button>
+          <button class="secondary" data-jump="system">시스템 점검</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- 2) 소스코드 입력 -->
+    <!-- =========================================================== -->
+    <section id="screen-code-input" class="screen">
+      <h1>소스코드 입력</h1>
+      <p class="muted">코드와 요구사항을 입력하고 실행 버튼을 누르면 모델이 답변을 생성합니다.</p>
+
+      <div class="card">
+        <div class="row">
+          <div class="col">
+            <label for="ci-language">언어</label>
+            <select id="ci-language">
+              <option value="">(자동/미지정)</option>
+              <option>python</option>
+              <option>javascript</option>
+              <option>typescript</option>
+              <option>go</option>
+              <option>java</option>
+              <option>cpp</option>
+              <option>c</option>
+              <option>rust</option>
+              <option>csharp</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="ci-model">모델</label>
+            <input type="text" id="ci-model" placeholder="예: stub-echo / llama3-8b" value="stub-echo" />
+          </div>
+        </div>
+
+        <label for="ci-requirement" style="margin-top:0.75rem">요구사항</label>
+        <textarea id="ci-requirement" placeholder="예: 이 함수의 시간복잡도를 O(n)으로 줄여줘"></textarea>
+
+        <label for="ci-code" style="margin-top:0.75rem">소스 코드</label>
+        <textarea id="ci-code" class="code" placeholder="여기에 소스 코드를 붙여넣으세요"></textarea>
+
+        <div class="actions" style="margin-top:0.9rem">
+          <button id="ci-run" class="primary">실행</button>
+          <button id="ci-clear" class="secondary">초기화</button>
+          <span class="muted" id="ci-status"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- 3) 이미지 업로드 -->
+    <!-- =========================================================== -->
+    <section id="screen-image-upload" class="screen">
+      <h1>이미지 업로드</h1>
+      <p class="muted">스크린샷/사진을 업로드해 분석/추출에 사용할 수 있습니다.</p>
+
+      <div class="card">
+        <label for="iu-file">이미지 파일</label>
+        <input type="file" id="iu-file" accept="image/*" />
+
+        <div class="row" style="margin-top:0.75rem">
+          <div class="col">
+            <label for="iu-type">이미지 타입 (Step 10)</label>
+            <select id="iu-type">
+              <option value="">(자동 분류)</option>
+            </select>
+            <div class="muted" style="margin-top:4px">
+              vision-server 가 OCR + 규칙 기반으로 분류합니다. 직접 지정하면 그대로 사용합니다.
+            </div>
+          </div>
+          <div class="col">
+            <label for="iu-language">코드 언어 hint(선택)</label>
+            <input type="text" id="iu-language" placeholder="예: python, javascript" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:0.75rem">
+          <div class="col">
+            <label for="iu-tag">태그(선택)</label>
+            <input type="text" id="iu-tag" placeholder="예: ocr-test" />
+          </div>
+          <div class="col">
+            <label for="iu-requirement">요구사항(선택)</label>
+            <input type="text" id="iu-requirement" placeholder="예: 이미지에서 코드를 추출해줘" />
+          </div>
+        </div>
+
+        <div class="actions" style="margin-top:0.9rem">
+          <button id="iu-upload" class="primary" disabled>업로드 + 분류/추출</button>
+          <button id="iu-run" class="secondary" disabled>업로드 후 실행</button>
+          <span class="muted" id="iu-status"></span>
+        </div>
+
+        <div id="iu-preview-wrap" style="margin-top:0.9rem; display:none">
+          <h3 class="muted" style="margin-bottom:0.4rem">미리보기</h3>
+          <img id="iu-preview" class="img-preview" alt="preview" />
+        </div>
+
+        <div id="iu-result" style="margin-top:0.9rem"></div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- 4) 결과 화면 -->
+    <!-- =========================================================== -->
+    <section id="screen-result" class="screen">
+      <h1>결과 화면</h1>
+      <p class="muted">가장 최근 실행 결과 또는 검색에서 선택한 답변의 상세를 표시합니다.</p>
+
+      <div id="result-empty" class="card">
+        <p class="muted">아직 표시할 결과가 없습니다. 소스코드 입력 화면에서 "실행"을 누르거나, 저장된 답변 검색에서 항목을 선택하세요.</p>
+      </div>
+
+      <div id="result-content" style="display:none">
+        <div class="card">
+          <div class="toolbar">
+            <h2 class="grow" id="rs-title">답변 #-</h2>
+            <span class="muted" id="rs-meta"></span>
+          </div>
+          <div id="rs-images"></div>
+        </div>
+
+        <div class="card">
+          <h2>모델 답변</h2>
+          <pre class="code" id="rs-answer"></pre>
+        </div>
+
+        <div class="card" id="rs-compare-card" style="display:none">
+          <h2>원본 / 결과 비교</h2>
+          <p class="muted" id="rs-compare-meta"></p>
+          <div class="compare">
+            <div>
+              <h3>원본 코드</h3>
+              <pre class="code" id="rs-original"></pre>
+            </div>
+            <div>
+              <h3>생성/최적화된 코드</h3>
+              <pre class="code" id="rs-generated"></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="rs-diff-card" style="display:none">
+          <h2>Diff</h2>
+          <pre class="code" id="rs-diff"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- 5) 저장된 답변 검색 -->
+    <!-- =========================================================== -->
+    <section id="screen-search" class="screen">
+      <h1>저장된 답변 검색</h1>
+      <p class="muted">model_answers 테이블에 저장된 답변을 키워드로 검색할 수 있습니다.</p>
+
+      <div class="card">
+        <div class="toolbar">
+          <input type="search" id="sr-q" class="grow" placeholder="검색어(answer/prompt 부분일치)" />
+          <input type="text" id="sr-model" placeholder="모델명 필터(선택)" style="max-width: 220px" />
+          <button class="primary" id="sr-search">검색</button>
+          <button class="secondary" id="sr-refresh">최근 50개</button>
+        </div>
+        <div class="muted" id="sr-status">결과를 불러오는 중…</div>
+        <div style="margin-top: 0.6rem; overflow:auto">
+          <table id="sr-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>모델</th><th>요청</th><th>답변 미리보기</th><th>지연</th><th>저장 시각</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- 6) 시스템 상태 -->
+    <!-- =========================================================== -->
+    <section id="screen-system" class="screen">
+      <h1>시스템 상태</h1>
+      <p class="muted">실행 모드(CPU/GPU)와 Docker 서비스 상태를 확인합니다.</p>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 class="grow">실행 모드 <span id="sys-mode-badge" class="badge unknown" style="margin-left:6px">…</span></h2>
+          <button class="secondary" id="sys-redetect">하드웨어 재감지</button>
+          <button class="secondary" id="sys-refresh">새로고침</button>
+        </div>
+        <p class="muted" id="sys-mode-detail">감지 결과를 불러오는 중…</p>
+        <table id="sys-hw-table">
+          <tbody><tr><td colspan="2" class="muted">로딩 중…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Docker 서비스 상태</h2>
+        <p class="muted">backend 가 각 컨테이너의 <code>/health</code> 를 호출해 결과를 모읍니다.</p>
+        <div style="overflow:auto">
+          <table id="sys-svc-table">
+            <thead>
+              <tr><th>서비스</th><th>상태</th><th>HTTP</th><th>지연</th><th>URL / 메시지</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- 7) 언어 호환 (Step 9) -->
+    <!-- =========================================================== -->
+    <section id="screen-language" class="screen">
+      <h1>언어 호환 계층</h1>
+      <p class="muted">코드를 붙여 넣으면 언어 자동 감지, 함수/클래스 추출, import 분석, dependency 파일 / 빌드·실행 명령 추론, adapter 매핑 결과를 보여줍니다.</p>
+
+      <div class="card">
+        <h2>코드 분석</h2>
+        <div class="row">
+          <div class="col">
+            <label>파일명 (선택, 확장자 자동 감지)</label>
+            <input id="lang-filename" type="text" placeholder="예: main.py, app.ts, server.go" />
+          </div>
+          <div class="col">
+            <label>언어 hint (선택)</label>
+            <input id="lang-hint" type="text" placeholder="예: python (비워두면 자동 감지)" />
+          </div>
+        </div>
+        <label style="margin-top:8px">코드</label>
+        <textarea id="lang-code" class="code" placeholder="여기에 코드를 붙여넣으세요"></textarea>
+        <div class="actions" style="margin-top:8px">
+          <button class="primary" id="lang-analyze">분석 실행</button>
+          <button class="secondary" id="lang-clear">지우기</button>
+          <span id="lang-status" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card" id="lang-result-card" style="display:none">
+        <h2>분석 결과</h2>
+        <div class="stats" id="lang-stats"></div>
+        <div class="row" style="margin-top:0.75rem">
+          <div class="col">
+            <h3 class="muted">함수</h3>
+            <div id="lang-functions" class="code-block" style="max-height:200px"></div>
+          </div>
+          <div class="col">
+            <h3 class="muted">클래스 / 타입</h3>
+            <div id="lang-classes" class="code-block" style="max-height:200px"></div>
+          </div>
+          <div class="col">
+            <h3 class="muted">import / include / use</h3>
+            <div id="lang-imports" class="code-block" style="max-height:200px"></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:0.75rem">
+          <div class="col">
+            <h3 class="muted">주석 스타일</h3>
+            <pre id="lang-comment" class="code"></pre>
+          </div>
+          <div class="col">
+            <h3 class="muted">Dependency / 빌드 / 실행</h3>
+            <pre id="lang-commands" class="code"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 class="grow">지원 언어 카탈로그</h2>
+          <button class="secondary" id="lang-reload-catalog">새로고침</button>
+        </div>
+        <p class="muted">각 언어의 지원 등급(Level 1~6)과 연결된 adapter 입니다. MVP 기준으로 모든 언어를 최소 Level 1로 받고, 주요 언어부터 Level 4 이상으로 확장합니다.</p>
+        <div style="overflow:auto">
+          <table id="lang-catalog">
+            <thead><tr><th>언어</th><th>Level</th><th>설명</th><th>확장자</th><th>Adapter</th><th>Build</th><th>Run</th></tr></thead>
+            <tbody><tr><td colspan="7" class="muted">로딩 중…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+(() => {
+  // -------------------- API base --------------------
+  const BACKEND = (window.BACKEND_URL || 'http://localhost:8000');
+  const HW_DETECTOR = (window.HW_DETECTOR_URL || 'http://localhost:8005');
+
+  // -------------------- Helpers --------------------
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs = {}, children = []) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') node.className = v;
+      else if (k === 'html') node.innerHTML = v;
+      else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
+      else node.setAttribute(k, v);
+    }
+    for (const c of [].concat(children)) {
+      if (c == null) continue;
+      node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return node;
+  }
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  let toastTimer = null;
+  function toast(msg, type = '') {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = 'toast ' + type; }, 2400);
+  }
+  async function api(path, opts = {}) {
+    const url = path.startsWith('http') ? path : BACKEND + path;
+    const r = await fetch(url, opts);
+    if (!r.ok) {
+      let detail = r.statusText;
+      try { detail = (await r.json()).detail || detail; } catch (_) {}
+      throw new Error(`${r.status} ${detail}`);
+    }
+    const ct = r.headers.get('content-type') || '';
+    return ct.includes('application/json') ? r.json() : r.text();
+  }
+
+  // -------------------- Navigation --------------------
+  const screens = ['dashboard','code-input','image-upload','result','search','system','language'];
+  function showScreen(name) {
+    if (!screens.includes(name)) name = 'dashboard';
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    $('screen-' + name).classList.add('active');
+    document.querySelectorAll('nav .nav-item').forEach(b => {
+      b.classList.toggle('active', b.dataset.screen === name);
+    });
+    location.hash = '#' + name;
+    if (name === 'dashboard') loadDashboard();
+    if (name === 'search') searchAnswers();
+    if (name === 'system') loadSystem();
+  }
+  document.querySelectorAll('nav .nav-item').forEach(b => {
+    b.addEventListener('click', () => showScreen(b.dataset.screen));
+  });
+  document.querySelectorAll('[data-jump]').forEach(b => {
+    b.addEventListener('click', () => showScreen(b.dataset.jump));
+  });
+  window.addEventListener('hashchange', () => showScreen(location.hash.replace(/^#/, '')));
+
+  // -------------------- Common: badge & sidebar --------------------
+  function setModeBadge(elBadge, mode) {
+    elBadge.classList.remove('gpu','cpu','unknown');
+    if (mode === 'gpu') { elBadge.classList.add('gpu'); elBadge.textContent = 'GPU mode'; }
+    else if (mode === 'cpu') { elBadge.classList.add('cpu'); elBadge.textContent = 'CPU mode'; }
+    else { elBadge.classList.add('unknown'); elBadge.textContent = mode || 'unknown'; }
+  }
+
+  async function refreshSidebar() {
+    try {
+      const j = await api('/health');
+      $('sidebar-backend').innerHTML = j.status === 'ok'
+        ? '<span class="pill up"><span class="dot up"></span>up</span>'
+        : '<span class="pill down"><span class="dot down"></span>down</span>';
+    } catch {
+      $('sidebar-backend').innerHTML = '<span class="pill down"><span class="dot down"></span>down</span>';
+    }
+    try {
+      const p = await api('/api/v1/hardware/current');
+      setModeBadge($('sidebar-mode-badge'), p.run_mode);
+    } catch {
+      setModeBadge($('sidebar-mode-badge'), null);
+    }
+  }
+
+  // -------------------- 1) Dashboard --------------------
+  async function loadDashboard() {
+    try {
+      const p = await api('/api/v1/hardware/current');
+      setModeBadge($('db-mode-badge'), p.run_mode);
+      $('db-mode-detail').textContent =
+        `accelerator=${p.accelerator || '-'} · CPU=${p.cpu_cores || '?'}c · RAM=${p.ram_mb || '?'}MB`;
+    } catch {
+      setModeBadge($('db-mode-badge'), null);
+      $('db-mode-detail').textContent = '저장된 하드웨어 프로필이 없습니다.';
+    }
+    try {
+      const sys = await api('/api/v1/system/services');
+      const total = sys.services.length;
+      const up = sys.services.filter(s => s.status === 'up').length;
+      $('db-services-up').textContent = `${up} / ${total}`;
+    } catch {
+      $('db-services-up').textContent = '?';
+    }
+    try {
+      const list = await api('/api/v1/model-answers?limit=1&offset=0');
+      $('db-answers').textContent = list.total ?? '?';
+    } catch {
+      $('db-answers').textContent = '?';
+    }
+    try {
+      const info = await api('/api/v1/storage/info');
+      const sum = Object.values(info.categories).reduce((a,c) => a + (c.file_count || 0), 0);
+      $('db-files').textContent = sum;
+    } catch {
+      $('db-files').textContent = '?';
+    }
+  }
+
+  // -------------------- 2) Source code input --------------------
+  $('ci-clear').addEventListener('click', () => {
+    $('ci-requirement').value = '';
+    $('ci-code').value = '';
+    $('ci-status').textContent = '';
+  });
+  $('ci-run').addEventListener('click', async () => {
+    const requirement = $('ci-requirement').value.trim();
+    const code = $('ci-code').value;
+    const language = $('ci-language').value || null;
+    const model = $('ci-model').value.trim() || 'stub-echo';
+    if (!requirement && !code) { toast('요구사항이나 코드 중 하나는 입력하세요', 'error'); return; }
+    $('ci-run').disabled = true;
+    $('ci-status').textContent = '실행 중…';
+    try {
+      const r = await api('/api/v1/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requirement: requirement || null,
+          code_text: code || null,
+          code_language: language,
+          model_name: model,
+        }),
+      });
+      $('ci-status').textContent = `완료 · answer_id=${r.answer_id} (${r.latency_ms}ms)`;
+      toast(`답변 저장됨 (#${r.answer_id})`, 'ok');
+      lastAnswerId = r.answer_id;
+      lastOriginalCode = code || '';
+      await openResult(r.answer_id);
+      showScreen('result');
+    } catch (e) {
+      toast('실행 실패: ' + e.message, 'error');
+      $('ci-status').textContent = '실패: ' + e.message;
+    } finally {
+      $('ci-run').disabled = false;
+    }
+  });
+
+  // -------------------- 3) Image upload --------------------
+  let pendingImageFile = null;
+
+  // Step 10: 지원 이미지 타입 채우기
+  async function loadImageTypes() {
+    try {
+      const r = await api('/api/image-types');
+      const sel = $('iu-type');
+      // 기존 옵션(첫 번째 자동분류) 보존
+      sel.innerHTML = '<option value="">(자동 분류)</option>';
+      (r.types || []).forEach(t => {
+        const o = document.createElement('option');
+        o.value = t.key; o.textContent = t.label + ' (' + t.key + ')';
+        sel.appendChild(o);
+      });
+    } catch (_) { /* fallback: 기본 옵션 그대로 */ }
+  }
+  loadImageTypes();
+
+  $('iu-file').addEventListener('change', (e) => {
+    pendingImageFile = e.target.files && e.target.files[0];
+    const can = !!pendingImageFile;
+    $('iu-upload').disabled = !can;
+    $('iu-run').disabled = !can;
+    const wrap = $('iu-preview-wrap');
+    if (can) {
+      $('iu-preview').src = URL.createObjectURL(pendingImageFile);
+      wrap.style.display = '';
+    } else {
+      wrap.style.display = 'none';
+    }
+  });
+  function renderImageUploadResult(r) {
+    const ext = r.extracted_files || {};
+    const conf = (r.image_type_confidence != null)
+      ? Math.round(r.image_type_confidence * 100) + '%' : '-';
+    const links = ['text','code','spec','metadata']
+      .filter(k => ext[k])
+      .map(k => `<li>${k}: <code>${escapeHtml(ext[k])}</code></li>`)
+      .join('');
+    $('iu-result').innerHTML = `
+      <div class="muted">raw_input_id=${r.raw_input_id}, image_id=${r.image_id}</div>
+      <div class="muted">파일경로: <code>${escapeHtml(r.rel_path || r.file_path || '')}</code></div>
+      <div style="margin-top:8px">
+        <strong>이미지 타입:</strong>
+        <span class="badge gpu" style="margin-left:6px">${escapeHtml(r.image_type || 'unknown')}</span>
+        <span class="muted" style="margin-left:6px">
+          (source=${escapeHtml(r.image_type_source || '-')}, conf=${conf},
+           status=${escapeHtml(r.extraction_status || '-')})
+        </span>
+      </div>
+      ${links ? `<div style="margin-top:8px"><strong>추출 산출물:</strong><ul>${links}</ul></div>` : ''}
+    `;
+  }
+  async function doUploadImage() {
+    if (!pendingImageFile) return null;
+    const fd = new FormData();
+    fd.append('file', pendingImageFile);
+    if ($('iu-tag').value)        fd.append('user_tag', $('iu-tag').value);
+    if ($('iu-type').value)       fd.append('image_type', $('iu-type').value);
+    if ($('iu-language').value)   fd.append('language_hint', $('iu-language').value);
+    fd.append('extract', 'true');
+    $('iu-status').textContent = '업로드 + 분류/추출 중…';
+    const r = await api('/api/input/image', { method: 'POST', body: fd });
+    $('iu-status').textContent =
+      `완료 · image_id=${r.image_id} · type=${r.image_type || '-'}`;
+    renderImageUploadResult(r);
+    return r;
+  }
+  $('iu-upload').addEventListener('click', async () => {
+    try { await doUploadImage(); toast('이미지 업로드 + 분류 완료', 'ok'); }
+    catch (e) { toast('업로드 실패: ' + e.message, 'error'); $('iu-status').textContent = '실패: ' + e.message; }
+  });
+  $('iu-run').addEventListener('click', async () => {
+    try {
+      const up = await doUploadImage();
+      if (!up) return;
+      const requirement = $('iu-requirement').value.trim();
+      $('iu-status').textContent = '실행 중…';
+      const r = await api('/api/v1/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          raw_input_id: up.raw_input_id,
+          image_id: up.image_id,
+          requirement: requirement || null,
+          model_name: 'stub-echo',
+        }),
+      });
+      $('iu-status').textContent = `완료 · answer_id=${r.answer_id}`;
+      toast('답변 저장됨', 'ok');
+      lastAnswerId = r.answer_id;
+      lastOriginalCode = '';
+      await openResult(r.answer_id);
+      showScreen('result');
+    } catch (e) {
+      toast('실패: ' + e.message, 'error');
+      $('iu-status').textContent = '실패: ' + e.message;
+    }
+  });
+
+  // -------------------- 4) Result screen --------------------
+  let lastAnswerId = null;
+  let lastOriginalCode = '';
+
+  async function openResult(answerId) {
+    if (!answerId) return;
+    $('result-empty').style.display = 'none';
+    $('result-content').style.display = 'none';
+    try {
+      const data = await api('/api/v1/model-answers/' + answerId);
+      const a = data.answer;
+      $('rs-title').textContent = `답변 #${a.id} · ${a.model_name}`;
+      $('rs-meta').textContent =
+        `${a.created_at || ''} · ${a.latency_ms || 0}ms · raw_input=${a.raw_input_id}`;
+      $('rs-answer').textContent = a.answer_text || '';
+
+      // 이미지 미리보기 + Step 10: 이미지 타입 배지
+      const imgWrap = $('rs-images'); imgWrap.innerHTML = '';
+      (data.images || []).forEach(im => {
+        const url = `${BACKEND}/api/v1/files?path=${encodeURIComponent(im.file_path)}`;
+        const wrap = el('div', { style: 'display:inline-block; margin-right:12px; vertical-align:top' });
+        wrap.appendChild(el('img', { src: url, class: 'img-preview', style: 'display:block' }));
+        if (im.image_type) {
+          const conf = im.image_type_confidence != null
+            ? Math.round(im.image_type_confidence * 100) + '%' : '-';
+          wrap.appendChild(el('div', {
+            class: 'muted', style: 'margin-top:4px',
+            html: `<span class="badge gpu">${escapeHtml(im.image_type)}</span>
+                   <span style="margin-left:6px">conf=${conf} · ${escapeHtml(im.extraction_status || '')}</span>`,
+          }));
+        }
+        imgWrap.appendChild(wrap);
+      });
+
+      // 원본/결과 비교
+      const compareCard = $('rs-compare-card');
+      const diffCard = $('rs-diff-card');
+      compareCard.style.display = 'none';
+      diffCard.style.display = 'none';
+
+      // 원본 코드: raw_inputs.source_file_path 또는 lastOriginalCode
+      let originalText = '';
+      if (a.raw_source_file_path) {
+        try { originalText = await api('/api/v1/files/text?path=' + encodeURIComponent(a.raw_source_file_path)); }
+        catch (_) {}
+      }
+      if (!originalText && lastOriginalCode) originalText = lastOriginalCode;
+
+      const gen = (data.generated_code || [])[0];
+      const opt = (data.optimized_code || [])[0];
+      const generatedText = (opt && opt.code_text) || (gen && gen.code_text) || '';
+
+      if (originalText || generatedText) {
+        compareCard.style.display = '';
+        $('rs-original').textContent = originalText || '(원본 코드 없음)';
+        $('rs-generated').textContent = generatedText || '(생성 코드 없음)';
+        $('rs-compare-meta').textContent = opt
+          ? `optimized_code #${opt.id} (optimizer=${opt.optimizer || '-'})`
+          : (gen ? `generated_code #${gen.id}` : '');
+      }
+
+      if (opt && opt.diff_file_path) {
+        try {
+          const diff = await api('/api/v1/files/text?path=' + encodeURIComponent(opt.diff_file_path));
+          $('rs-diff').textContent = diff;
+          diffCard.style.display = '';
+        } catch (_) {}
+      }
+
+      $('result-content').style.display = '';
+    } catch (e) {
+      $('result-empty').style.display = '';
+      $('result-empty').innerHTML = `<p class="muted">결과를 불러오지 못했습니다: ${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  // -------------------- 5) Search saved answers --------------------
+  async function searchAnswers() {
+    const q = $('sr-q').value.trim();
+    const model = $('sr-model').value.trim();
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (model) params.set('model', model);
+    params.set('limit', '50');
+    $('sr-status').textContent = '검색 중…';
+    try {
+      const r = await api('/api/v1/model-answers?' + params.toString());
+      $('sr-status').textContent = `총 ${r.total}건 · 표시 ${r.items.length}건`;
+      const tbody = $('sr-table').querySelector('tbody');
+      tbody.innerHTML = '';
+      r.items.forEach(it => {
+        const tr = el('tr', { class: 'clickable', onclick: () => { lastAnswerId = it.id; openResult(it.id).then(() => showScreen('result')); } }, [
+          el('td', {}, '#' + it.id),
+          el('td', {}, it.model_name || '-'),
+          el('td', { html: `<div class="muted">${escapeHtml((it.raw_preview || it.prompt_preview || '').slice(0, 120))}</div>` }),
+          el('td', { html: `<div>${escapeHtml((it.answer_preview || '').slice(0, 160))}</div>` }),
+          el('td', {}, (it.latency_ms ?? '-') + ' ms'),
+          el('td', {}, it.created_at || '-'),
+        ]);
+        tbody.appendChild(tr);
+      });
+      if (r.items.length === 0) {
+        tbody.appendChild(el('tr', {}, el('td', { colspan: 6, class: 'muted' }, '결과가 없습니다.')));
+      }
+    } catch (e) {
+      $('sr-status').textContent = '검색 실패: ' + e.message;
+    }
+  }
+  $('sr-search').addEventListener('click', searchAnswers);
+  $('sr-refresh').addEventListener('click', () => { $('sr-q').value = ''; $('sr-model').value = ''; searchAnswers(); });
+  $('sr-q').addEventListener('keydown', e => { if (e.key === 'Enter') searchAnswers(); });
+
+  // -------------------- 6) System status --------------------
+  function row(k, v) {
+    return `<tr><th style="width:180px">${escapeHtml(k)}</th><td>${v == null ? '<span class="muted">-</span>' : escapeHtml(String(v))}</td></tr>`;
+  }
+  async function loadSystem() {
+    // 하드웨어
+    try {
+      const p = await api('/api/v1/hardware/current');
+      setModeBadge($('sys-mode-badge'), p.run_mode);
+      $('sys-mode-detail').textContent =
+        `accelerator=${p.accelerator || '-'} · fingerprint=${(p.fingerprint || '').slice(0,12)}…`;
+      const tbody = $('sys-hw-table').querySelector('tbody');
+      tbody.innerHTML = [
+        row('Host', p.host_name),
+        row('OS', `${p.os_name || ''} ${p.os_version || ''}`),
+        row('CPU', `${p.cpu_model || '-'} (${p.cpu_cores ?? '?'} cores)`),
+        row('RAM', p.ram_mb ? `${p.ram_mb} MB` : '-'),
+        row('GPU', p.gpu_present
+            ? `${p.gpu_vendor || ''} ${p.gpu_model || ''} (${p.gpu_vram_mb ?? '?'} MB)`
+            : '없음'),
+        row('CUDA', p.cuda_available ? '✓' : '✗'),
+        row('DirectML', p.directml_available ? '✓' : '✗'),
+        row('Docker GPU 접근', p.docker_gpu_ok ? '✓' : '✗'),
+        row('저장공간', p.storage_total_gb
+            ? `${p.storage_free_gb} / ${p.storage_total_gb} GB free` : '-'),
+        row('감지 시각', p.detected_at || p.created_at || '-'),
+      ].join('');
+    } catch {
+      setModeBadge($('sys-mode-badge'), null);
+      $('sys-mode-detail').textContent = '저장된 하드웨어 프로필이 없습니다. 재감지를 눌러주세요.';
+      $('sys-hw-table').querySelector('tbody').innerHTML =
+        '<tr><td colspan="2" class="muted">데이터 없음</td></tr>';
+    }
+
+    // 서비스 상태
+    try {
+      const sys = await api('/api/v1/system/services');
+      const tbody = $('sys-svc-table').querySelector('tbody');
+      tbody.innerHTML = '';
+      sys.services.forEach(s => {
+        const pillCls = s.status === 'up' ? 'up' : 'down';
+        const dotCls = s.status === 'up' ? 'up' : 'down';
+        const httpTxt = s.http != null ? s.http : '-';
+        const ms = s.latency_ms != null ? s.latency_ms + ' ms' : '-';
+        const detail = s.error
+          ? `<span class="muted">${escapeHtml(s.url || '')}</span> · <span class="muted">${escapeHtml(s.error)}</span>`
+          : `<span class="muted">${escapeHtml(s.url || '')}</span>`;
+        const tr = el('tr', { html: `
+          <td><strong>${escapeHtml(s.name)}</strong></td>
+          <td><span class="pill ${pillCls}"><span class="dot ${dotCls}"></span>${s.status}</span></td>
+          <td>${escapeHtml(httpTxt)}</td>
+          <td>${escapeHtml(ms)}</td>
+          <td>${detail}</td>` });
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      $('sys-svc-table').querySelector('tbody').innerHTML =
+        `<tr><td colspan="5" class="muted">서비스 상태 조회 실패: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+  $('sys-refresh').addEventListener('click', loadSystem);
+  $('sys-redetect').addEventListener('click', async () => {
+    $('sys-mode-detail').textContent = '재감지 중…';
+    try {
+      await api(HW_DETECTOR + '/api/v1/detect', { method: 'POST' });
+      toast('재감지 완료', 'ok');
+      await loadSystem();
+      await refreshSidebar();
+    } catch (e) {
+      toast('재감지 실패: ' + e.message, 'error');
+      $('sys-mode-detail').textContent = '재감지 실패: ' + e.message;
+    }
+  });
+
+  // -------------------- Boot --------------------
+  refreshSidebar();
+  const initial = (location.hash || '#dashboard').replace(/^#/, '');
+  showScreen(initial);
+  setInterval(refreshSidebar, 15000);
+
+  // -------------------- 7) Language Compatibility --------------------
+  function statTile(label, value) {
+    return el('div', { class: 'stat' }, [
+      el('div', { class: 'muted', html: escapeHtml(label) }),
+      el('div', { html: `<strong style="font-size:1.15rem">${escapeHtml(value)}</strong>` }),
+    ]);
+  }
+  function listBlock(items, emptyMsg) {
+    if (!items || items.length === 0) return escapeHtml(emptyMsg || '(없음)');
+    return items.map(s => escapeHtml(s)).join('\n');
+  }
+  async function runLanguageAnalyze() {
+    const code = $('lang-code').value;
+    if (!code.trim()) { toast('코드를 입력하세요', 'error'); return; }
+    const filename = $('lang-filename').value.trim() || null;
+    const hint = $('lang-hint').value.trim() || null;
+    $('lang-status').textContent = '분석 중…';
+    try {
+      const res = await api('/api/language/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, filename, hint, include_patterns: true }),
+      });
+      $('lang-status').textContent = '';
+      $('lang-result-card').style.display = '';
+
+      const stats = res.stats || {};
+      const tiles = [
+        statTile('언어', `${res.language || '-'} (Level ${res.support_level || 1})`),
+        statTile('감지 방법', (res.detect && res.detect.source) || '-'),
+        statTile('확장자', res.extension || '-'),
+        statTile('Adapter', res.adapter || '-'),
+        statTile('라인', stats.lines ?? 0),
+        statTile('함수', stats.functions ?? 0),
+        statTile('클래스', stats.classes ?? 0),
+        statTile('imports', stats.imports ?? 0),
+      ];
+      const sw = $('lang-stats'); sw.innerHTML = ''; tiles.forEach(t => sw.appendChild(t));
+
+      $('lang-functions').textContent = (res.functions || []).join('\n') || '(없음)';
+      $('lang-classes').textContent   = (res.classes   || []).join('\n') || '(없음)';
+      $('lang-imports').textContent   = (res.imports   || []).join('\n') || '(없음)';
+
+      const c = res.comment || {};
+      $('lang-comment').textContent =
+        `라인 주석 표시: ${c.line_marker || '(없음)'}\n` +
+        `블록 주석 표시: ${c.block_marker ? c.block_marker.join(' … ') : '(없음)'}\n` +
+        `라인 주석 수: ${c.line_comment_count ?? 0}\n` +
+        `블록 주석 수: ${c.block_comment_count ?? 0}\n` +
+        `주석 비율: ${c.ratio ?? 0}`;
+
+      $('lang-commands').textContent =
+        `Dependency 파일: ${(res.dependency_files || []).join(', ') || '(없음)'}\n` +
+        `Build : ${res.build_command || '(없음)'}\n` +
+        `Run   : ${res.run_command || '(없음)'}\n` +
+        `Test  : ${res.test_command || '(없음)'}\n` +
+        `지원 등급: Level ${res.support_level} - ${res.support_label}`;
+
+      toast('분석 완료', 'ok');
+    } catch (e) {
+      $('lang-status').textContent = '';
+      toast('분석 실패: ' + e.message, 'error');
+    }
+  }
+  async function loadLanguageCatalog() {
+    const tbody = $('lang-catalog').querySelector('tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">로딩 중…</td></tr>';
+    try {
+      const res = await api('/api/language/languages');
+      tbody.innerHTML = '';
+      (res.languages || []).forEach(L => {
+        const tr = el('tr', {}, []);
+        tr.innerHTML = `
+          <td><strong>${escapeHtml(L.language)}</strong></td>
+          <td><span class="pill ${L.level >= 4 ? 'up' : 'down'}">L${L.level}</span></td>
+          <td>${escapeHtml(L.level_label || '')}</td>
+          <td><code>${escapeHtml((L.extensions || []).join(', '))}</code></td>
+          <td>${escapeHtml(L.adapter || '')}</td>
+          <td><code>${escapeHtml(L.build || '')}</code></td>
+          <td><code>${escapeHtml(L.run || '')}</code></td>`;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="7" class="muted">카탈로그 로드 실패: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+  $('lang-analyze').addEventListener('click', runLanguageAnalyze);
+  $('lang-clear').addEventListener('click', () => {
+    $('lang-code').value = ''; $('lang-filename').value = ''; $('lang-hint').value = '';
+    $('lang-result-card').style.display = 'none';
+  });
+  $('lang-reload-catalog').addEventListener('click', loadLanguageCatalog);
+  // 첫 진입 시 카탈로그 자동 로드
+  loadLanguageCatalog();
+})();
+</script>
 </body>
 </html>

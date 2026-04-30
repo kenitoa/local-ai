@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir fastapi==0.115.0 uvicorn==0.30.6
+RUN pip install --no-cache-dir fastapi==0.115.0 uvicorn==0.30.6 pillow==10.4.0
 COPY app.py /app/app.py
 RUN mkdir -p /app/models /app/logs
 ENV SERVICE_NAME=vision-server SERVICE_PORT=8002

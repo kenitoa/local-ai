@@ -146,6 +146,7 @@ services:
       - "${VISION_SERVER_PORT:-8002}:8002"
     volumes:
       - ${MODELS_DIR:-./models}:/app/models
+      - ${DATA_DIR:-./data}:/app/data:ro
       - ${LOGS_DIR:-./logs}/vision-server:/app/logs
     networks: [local-ai-net]
     healthcheck:
@@ -208,11 +209,27 @@ services:
     <<: *restart
     environment:
       <<: *common-env
+      BACKEND_URL: http://backend:8000
+      STORAGE_PATH: /app/data
+      PUSH_ON_STARTUP: "1"
     ports:
       - "${HARDWARE_DETECTOR_PORT:-8005}:8005"
     volumes:
+      - ${DATA_DIR:-./data}:/app/data:ro
       - ${LOGS_DIR:-./logs}/hardware-detector:/app/logs
+    depends_on:
+      backend:
+        condition: service_healthy
     networks: [local-ai-net]
+    # NVIDIA GPU 가 있는 호스트에서 컨테이너에 GPU 를 노출하려면 아래 주석 해제.
+    # (nvidia-container-toolkit 필요)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8005/health').status==200 else 1)"]
       interval: 10s

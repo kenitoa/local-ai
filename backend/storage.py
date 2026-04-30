@@ -63,7 +63,49 @@ _CATEGORIES: dict[str, str] = {
     "model_answers": "model_answers",
     "embeddings":    "embeddings",
     "logs":          "logs",
+    # Step 11: 자체 VLM 학습 파이프라인
+    "vlm_dataset":         "vlm_training/dataset",
+    "vlm_stage_code":      "vlm_training/dataset/stage_1_code_image",
+    "vlm_stage_error":     "vlm_training/dataset/stage_2_error_log_image",
+    "vlm_stage_spec":      "vlm_training/dataset/stage_3_spec_image",
+    "vlm_stage_table":     "vlm_training/dataset/stage_4_table_structure",
+    "vlm_stage_ui":        "vlm_training/dataset/stage_5_ui_layout",
+    "vlm_pipeline_output": "vlm_training/pipeline_output",
+    # Step 12: 자체 LLM 학습 파이프라인
+    "llm_tokenizer":          "llm_training/tokenizer",
+    "llm_corpus":             "llm_training/corpus",
+    "llm_library":            "llm_training/library",
+    "llm_dataset":            "llm_training/dataset",
+    "llm_dataset_optimize":   "llm_training/dataset/optimize_code",
+    "llm_dataset_spec":       "llm_training/dataset/spec_to_code",
+    "llm_dataset_explain":    "llm_training/dataset/explain_code",
+    "llm_dataset_instruction":"llm_training/dataset/instruction",
+    "llm_dataset_pretrain":   "llm_training/dataset/pretrain",
+    "llm_eval":               "llm_training/eval",
+    "llm_checkpoints":        "llm_training/checkpoints",
+    "llm_runs":               "llm_training/runs",
+    "llm_inference":          "llm_training/inference",
 }
+
+# Step 11: stage_key → 카테고리 매핑
+_VLM_STAGE_CATEGORY: dict[str, str] = {
+    "code_image":      "vlm_stage_code",
+    "error_log_image": "vlm_stage_error",
+    "spec_image":      "vlm_stage_spec",
+    "table_structure": "vlm_stage_table",
+    "ui_layout":       "vlm_stage_ui",
+}
+
+# Step 12: task → 카테고리 매핑 (학습 샘플 JSON 저장 위치)
+_LLM_TASK_CATEGORY: dict[str, str] = {
+    "optimize_code": "llm_dataset_optimize",
+    "spec_to_code":  "llm_dataset_spec",
+    "explain_code":  "llm_dataset_explain",
+    "instruction":   "llm_dataset_instruction",
+    "pretrain":      "llm_dataset_pretrain",
+}
+
+LLM_TASK_KEYS: tuple[str, ...] = tuple(_LLM_TASK_CATEGORY.keys())
 
 
 def ensure_layout() -> None:
@@ -357,6 +399,162 @@ def save_embedding(
         "embeddings",
         _compose_filename(stem, ".json"),
         list(vector),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6) Step 11: 자체 VLM 학습 파이프라인 산출물
+# ---------------------------------------------------------------------------
+def vlm_stage_category(stage_key: str) -> str:
+    """학습 단계 키 → 저장 카테고리 키.
+
+    알 수 없는 단계는 공용 ``vlm_dataset`` 카테고리로 폴백한다.
+    """
+    return _VLM_STAGE_CATEGORY.get(stage_key, "vlm_dataset")
+
+
+def save_vlm_training_sample(
+    sample: dict[str, Any],
+    *,
+    stage_key: str,
+    sample_id: int | None = None,
+    stem: str | None = None,
+) -> SavedFile:
+    """사진의 JSON 스키마를 그대로 디스크에 저장.
+
+    sample 예::
+
+        {
+            "image_path": "data/image_data/original/sample.png",
+            "image_type": "code_image",
+            "expected_text": "...",
+            "expected_code": "...",
+            "expected_structure": {}
+        }
+    """
+    return _write_json(
+        vlm_stage_category(stage_key),
+        _compose_filename(stem or stage_key, ".json", owner_id=sample_id),
+        sample,
+    )
+
+
+def save_vlm_pipeline_text(
+    text: str,
+    *,
+    pipeline: str = "code_region_extract",
+    image_id: int | None = None,
+    extension: str = ".txt",
+) -> SavedFile:
+    """초기 VLM 파이프라인이 추출한 텍스트(코드/로그/명세)를 저장."""
+    stem = _sanitize_stem(pipeline, "vlm_output")
+    return _write_text(
+        "vlm_pipeline_output",
+        _compose_filename(stem, extension, owner_id=image_id),
+        text,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 7) Step 12: 자체 LLM 학습 파이프라인 산출물
+# ---------------------------------------------------------------------------
+def llm_task_category(task: str) -> str:
+    """학습 task → 저장 카테고리. 알 수 없으면 공용 dataset 으로 폴백."""
+    return _LLM_TASK_CATEGORY.get(task, "llm_dataset")
+
+
+def save_llm_training_sample(
+    sample: dict[str, Any],
+    *,
+    task: str,
+    sample_id: int | None = None,
+    stem: str | None = None,
+) -> SavedFile:
+    """사진의 JSON 스키마(language/library/task/input_code/requirement/output_code/explanation)
+    를 그대로 디스크에 저장한다.
+    """
+    return _write_json(
+        llm_task_category(task),
+        _compose_filename(stem or task, ".json", owner_id=sample_id),
+        sample,
+    )
+
+
+def save_llm_corpus_file(
+    text: str,
+    *,
+    language: str,
+    file_name: str | None = None,
+    corpus_id: int | None = None,
+) -> SavedFile:
+    """언어별 코드 corpus(원문 텍스트)를 ``llm_training/corpus/<language>/`` 에 저장."""
+    rel_dir = f"{_CATEGORIES['llm_corpus']}/{_sanitize_stem(language, 'unknown')}"
+    target_dir = (DATA_DIR / rel_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stem = Path(file_name).stem if file_name else "corpus"
+    ext = _code_ext(language, file_name)
+    abs_path = target_dir / _compose_filename(stem, ext, owner_id=corpus_id)
+    blob = text.encode("utf-8")
+    abs_path.write_bytes(blob)
+    return SavedFile(
+        rel_path=to_relative(abs_path),
+        abs_path=abs_path,
+        size=len(blob),
+        sha256=_sha256_bytes(blob),
+    )
+
+
+def save_llm_library_example(
+    payload: dict[str, Any],
+    *,
+    language: str,
+    library: str,
+    example_id: int | None = None,
+) -> SavedFile:
+    """라이브러리 문서/예제(JSON) 저장."""
+    rel_dir = (
+        f"{_CATEGORIES['llm_library']}/"
+        f"{_sanitize_stem(language, 'unknown')}/"
+        f"{_sanitize_stem(library, 'unknown')}"
+    )
+    target_dir = (DATA_DIR / rel_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    fname = _compose_filename(library, ".json", owner_id=example_id)
+    abs_path = target_dir / fname
+    blob = json.dumps(payload, ensure_ascii=False, indent=2, default=str).encode("utf-8")
+    abs_path.write_bytes(blob)
+    return SavedFile(
+        rel_path=to_relative(abs_path),
+        abs_path=abs_path,
+        size=len(blob),
+        sha256=_sha256_bytes(blob),
+    )
+
+
+def save_llm_tokenizer_config(
+    config: dict[str, Any],
+    *,
+    name: str,
+) -> SavedFile:
+    """토크나이저 설계 JSON 저장."""
+    return _write_json(
+        "llm_tokenizer",
+        _compose_filename(name, ".json"),
+        config,
+    )
+
+
+def save_llm_inference_log(
+    payload: dict[str, Any],
+    *,
+    endpoint: str,
+    inference_id: int | None = None,
+) -> SavedFile:
+    """추론 호출 입력/응답을 감사용으로 디스크에 보존."""
+    return _write_json(
+        "llm_inference",
+        _compose_filename(endpoint, ".json", owner_id=inference_id),
+        payload,
     )
 
 
