@@ -15,9 +15,9 @@ from typing import Any, Optional
 import urllib.request
 import urllib.error
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 import db
@@ -57,14 +57,59 @@ log = logging.getLogger(SERVICE_NAME)
 
 app = FastAPI(title=f"local-ai {SERVICE_NAME}")
 
+# --- CORS (안전한 기본값: localhost web-ui 만 허용) ---
 _cors_origins = [o.strip() for o in os.getenv("BACKEND_CORS_ORIGINS", "").split(",") if o.strip()]
+if not _cors_origins:
+    _cors_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    log.warning("BACKEND_CORS_ORIGINS not set; using safe localhost defaults")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins or ["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
+
+
+# ---------------------------------------------------------------------------
+# API Key 인증 미들웨어 (단일 키 방식)
+#   - 클라이언트는 모든 요청에 ``X-API-Key: <BACKEND_API_KEY>`` 헤더를 포함해야 함.
+#   - 환경변수 ``BACKEND_API_KEY`` 미설정 시: 인증 비활성화 (개발 편의용, WARNING 출력).
+#   - 면제 경로: ``/``, ``/health``, ``/docs``, ``/redoc``, ``/openapi.json``,
+#     CORS preflight (OPTIONS).
+# ---------------------------------------------------------------------------
+BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "").strip()
+_AUTH_EXEMPT_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json", "/favicon.ico"}
+
+if not BACKEND_API_KEY:
+    log.warning(
+        "BACKEND_API_KEY is not set; API key authentication is DISABLED. "
+        "Set BACKEND_API_KEY in .env to enable it."
+    )
+
+
+@app.middleware("http")
+async def _api_key_auth(request: Request, call_next):
+    # 인증 비활성화 (개발 모드)
+    if not BACKEND_API_KEY:
+        return await call_next(request)
+    # CORS preflight 는 항상 통과
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    # 면제 경로 (헬스체크 등)
+    path = request.url.path
+    if path in _AUTH_EXEMPT_PATHS:
+        return await call_next(request)
+    # 헤더 검증 (대소문자 무시)
+    provided = request.headers.get("x-api-key", "")
+    if provided != BACKEND_API_KEY:
+        client = request.client.host if request.client else "?"
+        log.warning("unauthorized request from %s to %s", client, path)
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "missing or invalid X-API-Key header"},
+        )
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +126,7 @@ def health():
         "status": "ok",
         "mysql": db.ping(),
         "data_dir": str(storage.DATA_DIR),
+        "db_pool": db.pool_status(),
     }
 
 
@@ -88,6 +134,15 @@ def health():
 def _startup():
     storage.ensure_layout()
     log.info("%s service started; DATA_DIR=%s", SERVICE_NAME, storage.DATA_DIR)
+
+
+@app.on_event("shutdown")
+def _shutdown():
+    try:
+        db.dispose_engine()
+        log.info("%s shutdown: db engine disposed", SERVICE_NAME)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("db dispose failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------

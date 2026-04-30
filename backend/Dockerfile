@@ -4,6 +4,7 @@ RUN pip install --no-cache-dir \
     fastapi==0.115.0 \
     uvicorn==0.30.6 \
     pymysql==1.1.1 \
+    sqlalchemy==2.0.36 \
     python-multipart==0.0.9 \
     numpy==1.26.4
 COPY app.py /app/app.py

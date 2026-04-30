@@ -704,6 +704,22 @@
   const BACKEND = (window.BACKEND_URL || 'http://localhost:8000');
   const HW_DETECTOR = (window.HW_DETECTOR_URL || 'http://localhost:8005');
 
+  // -------------------- API key (단일 키 인증) --------------------
+  const API_KEY_STORAGE = 'localai.apiKey';
+  function getApiKey() {
+    let k = localStorage.getItem(API_KEY_STORAGE) || '';
+    if (!k) {
+      k = (window.prompt('Backend API Key 를 입력하세요 (.env 의 BACKEND_API_KEY 값):') || '').trim();
+      if (k) localStorage.setItem(API_KEY_STORAGE, k);
+    }
+    return k;
+  }
+  function clearApiKey() {
+    localStorage.removeItem(API_KEY_STORAGE);
+    window.location.reload();
+  }
+  window.clearApiKey = clearApiKey;
+
   // -------------------- Helpers --------------------
   function $(id) { return document.getElementById(id); }
   function el(tag, attrs = {}, children = []) {
@@ -735,7 +751,16 @@
   }
   async function api(path, opts = {}) {
     const url = path.startsWith('http') ? path : BACKEND + path;
-    const r = await fetch(url, opts);
+    // 모든 요청에 X-API-Key 자동 주입
+    const headers = new Headers(opts.headers || {});
+    const key = getApiKey();
+    if (key) headers.set('X-API-Key', key);
+    const r = await fetch(url, { ...opts, headers });
+    if (r.status === 401) {
+      // 키가 잘못되면 한 번 재입력 유도
+      localStorage.removeItem(API_KEY_STORAGE);
+      throw new Error('401 Unauthorized — API Key 가 잘못됐습니다. 새로고침 후 다시 입력하세요.');
+    }
     if (!r.ok) {
       let detail = r.statusText;
       try { detail = (await r.json()).detail || detail; } catch (_) {}

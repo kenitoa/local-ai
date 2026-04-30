@@ -24,6 +24,7 @@ try {
 
     $exe   = Join-Path $dist 'local-ai-launcher.exe'
     $setup = Join-Path $dist 'LocalAI_Setup.exe'
+    $full  = Join-Path $dist 'LocalAI_FullInstaller.exe'
 
     Write-Host "[build] go build -> $exe"
     $env:GOOS   = 'windows'
@@ -37,8 +38,15 @@ try {
     # 런처는 실행 파일 이름이 "LocalAI_Setup" 으로 시작하면 메뉴 없이
     # 자동 설치 흐름 (필수 구성 확인 → Compose → 브라우저) 으로 동작한다.
     Copy-Item -Path $exe -Destination $setup -Force
+
+    # Step 21: 동일 바이너리를 LocalAI_FullInstaller.exe 로도 복사한다.
+    # 이 이름으로 시작하면 Docker Desktop / WSL2 부터 모두 자동 설치한 뒤
+    # setup flow 까지 한 번에 진행한다 (UAC 1회 필요).
+    Copy-Item -Path $exe -Destination $full -Force
+
     Write-Host "[done ] $exe"
     Write-Host "[done ] $setup"
+    Write-Host "[done ] $full"
 }
 finally {
     Pop-Location

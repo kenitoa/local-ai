@@ -259,10 +259,21 @@ def collect_profile() -> dict[str, Any]:
     return profile
 
 
+BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000").rstrip("/")
+BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "").strip()
+
+
+def _backend_headers() -> dict[str, str]:
+    h = {"Content-Type": "application/json"}
+    if BACKEND_API_KEY:
+        h["X-API-Key"] = BACKEND_API_KEY
+    return h
+
+
 def push_profile(profile: dict[str, Any]) -> dict[str, Any] | None:
     url = f"{BACKEND_URL}/api/v1/hardware/profile"
     try:
-        resp = requests.post(url, json=profile, timeout=5)
+        resp = requests.post(url, json=profile, headers=_backend_headers(), timeout=5)
         resp.raise_for_status()
         return resp.json()
     except Exception as exc:  # noqa: BLE001

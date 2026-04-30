@@ -36,6 +36,7 @@ app = FastAPI(title=f"local-ai {SERVICE_NAME}")
 #   상황에서도 서비스는 구동된다.
 # ---------------------------------------------------------------------------
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000").rstrip("/")
+BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "").strip()
 
 _runtime_lock = threading.Lock()
 # 자체 학습형(A안) 기본값.
@@ -59,8 +60,10 @@ _runtime: dict = {
 
 def _fetch_plan_from_backend(timeout: float = 2.0) -> dict | None:
     url = f"{BACKEND_URL}/api/v1/hardware/plan/current"
+    headers = {"X-API-Key": BACKEND_API_KEY} if BACKEND_API_KEY else {}
+    req = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             if resp.status != 200:
                 return None
             data = json.loads(resp.read().decode("utf-8", errors="replace"))

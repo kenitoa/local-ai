@@ -12,6 +12,18 @@ x-common-env: &common-env
 x-restart: &restart
   restart: unless-stopped
 
+# NVIDIA GPU 노출 공통 설정 (nvidia-container-toolkit 필요)
+#   - 호스트에 NVIDIA 드라이버 + nvidia-container-toolkit 가 설치되어있어야 함.
+#   - GPU 가 없는 호스트에서는 `count: all` 이 0개로 해석되어 에러 없이 CPU 로 동작(fallback).
+x-gpu-deploy: &gpu-deploy
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
 networks:
   local-ai-net:
     driver: bridge
@@ -56,12 +68,18 @@ services:
     environment:
       <<: *common-env
       BACKEND_SECRET_KEY: ${BACKEND_SECRET_KEY}
+      BACKEND_API_KEY: ${BACKEND_API_KEY}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS}
       MYSQL_HOST: ${MYSQL_HOST:-mysql}
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_RECYCLE_SEC: ${DB_POOL_RECYCLE_SEC:-1800}
+      DB_POOL_TIMEOUT_SEC: ${DB_POOL_TIMEOUT_SEC:-30}
+      DB_ECHO: ${DB_ECHO:-0}
       MODEL_SERVER_URL: http://model-server:8001
       VISION_SERVER_URL: http://vision-server:8002
       EMBEDDING_SERVER_URL: http://embedding-server:8003
@@ -114,12 +132,16 @@ services:
       context: ./model-server
       dockerfile: Dockerfile
     container_name: local-ai-model-server
-    <<: *restart
+    <<: [*restart, *gpu-deploy]
     environment:
       <<: *common-env
       MODEL_SERVER_DEVICE: ${MODEL_SERVER_DEVICE:-auto}
       LOCAL_CHECKPOINT: ${LOCAL_CHECKPOINT:-self/cold-start}
       BOOTSTRAP_BASE_ID: ${BOOTSTRAP_BASE_ID:-Qwen/Qwen2.5-Coder-1.5B}
+      BACKEND_URL: http://backend:8000
+      BACKEND_API_KEY: ${BACKEND_API_KEY}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     ports:
       - "${MODEL_SERVER_PORT:-8001}:8001"
     volumes:
@@ -139,10 +161,12 @@ services:
       context: ./vision-server
       dockerfile: Dockerfile
     container_name: local-ai-vision-server
-    <<: *restart
+    <<: [*restart, *gpu-deploy]
     environment:
       <<: *common-env
       DEFAULT_VISION_MODEL: ${DEFAULT_VISION_MODEL}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     ports:
       - "${VISION_SERVER_PORT:-8002}:8002"
     volumes:
@@ -163,10 +187,12 @@ services:
       context: ./embedding-server
       dockerfile: Dockerfile
     container_name: local-ai-embedding-server
-    <<: *restart
+    <<: [*restart, *gpu-deploy]
     environment:
       <<: *common-env
       DEFAULT_EMBEDDING_MODEL: ${DEFAULT_EMBEDDING_MODEL}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     ports:
       - "${EMBEDDING_SERVER_PORT:-8003}:8003"
     volumes:
@@ -207,12 +233,15 @@ services:
       context: ./hardware-detector
       dockerfile: Dockerfile
     container_name: local-ai-hardware-detector
-    <<: *restart
+    <<: [*restart, *gpu-deploy]
     environment:
       <<: *common-env
       BACKEND_URL: http://backend:8000
+      BACKEND_API_KEY: ${BACKEND_API_KEY}
       STORAGE_PATH: /app/data
       PUSH_ON_STARTUP: "1"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     ports:
       - "${HARDWARE_DETECTOR_PORT:-8005}:8005"
     volumes:
@@ -222,15 +251,6 @@ services:
       backend:
         condition: service_healthy
     networks: [local-ai-net]
-    # NVIDIA GPU 가 있는 호스트에서 컨테이너에 GPU 를 노출하려면 아래 주석 해제.
-    # (nvidia-container-toolkit 필요)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8005/health').status==200 else 1)"]
       interval: 10s

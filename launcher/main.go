@@ -1,7 +1,7 @@
 // local-ai launcher (Step 18)
 // 최종 사용자가 .exe 하나로 다음 기능을 모두 사용할 수 있는 메뉴형 런처입니다.
 //
-//	 [1] 최초 설치       : Docker/Compose 점검 → .env 생성 → GPU 감지 → up -d → health check → 브라우저 오픈
+//	 [1] 최초 설치       : Docker/Compose 점검(미설치 시 winget 자동 설치) → .env 생성 → GPU 감지 → up -d → health check → 브라우저 오픈
 //	 [2] 실행            : docker compose up -d (이미 빌드된 상태 가정)
 //	 [3] 중지            : docker compose stop
 //	 [4] 재시작          : docker compose restart
@@ -11,6 +11,7 @@
 //	 [8] GPU/CPU 상태    : nvidia-smi 또는 CPU 정보, 컨테이너 device 설정 표시
 //	 [9] Web UI 열기     : 기본 브라우저로 http://localhost:WEB_UI_PORT 열기
 //	[10] Docker 서비스 복구 : down → up -d --build (재빌드 포함)
+//	[11] DB 로컬 백업    : scripts/db_backup.ps1 실행 → data/db_backups/ 에 mysqldump 저장
 //	 [0] 종료
 package main
 
@@ -130,10 +131,16 @@ func runCmdStream(dir, name string, args ...string) error {
 
 func checkDockerInstalled() {
 	if _, err := exec.LookPath("docker"); err != nil {
-		errf("docker 명령을 찾을 수 없습니다.")
-		fmt.Println("        Docker Desktop 을 먼저 설치해 주세요.")
-		fmt.Println("        https://www.docker.com/products/docker-desktop/")
-		fatal("Docker Desktop 미설치", nil)
+		warn("docker 명령을 찾을 수 없습니다. 자동 설치를 시도합니다.")
+		if !installDockerDesktop() {
+			errf("Docker Desktop 자동 설치에 실패했습니다.")
+			fmt.Println("        수동 설치: https://www.docker.com/products/docker-desktop/")
+			fatal("Docker Desktop 미설치", nil)
+		}
+		if _, err := exec.LookPath("docker"); err != nil {
+			warn("Docker 설치 후 새 터미널에서 다시 런처를 실행해 주세요 (PATH 갱신 필요).")
+			fatal("PATH 미적용", nil)
+		}
 	}
 	out, err := runCmd("", "docker", "--version")
 	if err != nil {
@@ -142,13 +149,70 @@ func checkDockerInstalled() {
 	ok(strings.TrimSpace(out))
 }
 
+// installDockerDesktop : Windows 에서 winget 으로 Docker Desktop 자동 설치.
+// macOS / Linux 는 안내만 하고 false 를 반환.
+func installDockerDesktop() bool {
+	if runtime.GOOS != "windows" {
+		warn("자동 설치는 Windows 에서만 지원됩니다. (OS=%s)", runtime.GOOS)
+		return false
+	}
+	if _, err := exec.LookPath("winget"); err != nil {
+		warn("winget 이 설치되어 있지 않아 자동 설치 불가. (Microsoft Store 에서 'App Installer' 설치 필요)")
+		return false
+	}
+	info("winget 으로 Docker Desktop 설치 중... (수분 걸림, UAC 상자가 뜨면 승인)")
+	err := runCmdStream("", "winget", "install", "--id", "Docker.DockerDesktop",
+		"-e", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements")
+	if err != nil {
+		warn("winget Docker.DockerDesktop 설치 실패: %v", err)
+		return false
+	}
+	ok("Docker Desktop 설치 명령 완료.")
+	info("설치 완료 후 Docker Desktop 을 1회 실행해 주세요 (최초 초기화 필요).")
+	return true
+}
+
 func checkDockerRunning() {
 	if _, err := runCmd("", "docker", "info"); err != nil {
-		errf("Docker 데몬에 연결할 수 없습니다.")
-		fmt.Println("        Docker Desktop 을 실행한 뒤 다시 시도해 주세요.")
+		warn("Docker 데몬에 연결할 수 없습니다. Docker Desktop 을 자동으로 실행합니다...")
+		if tryStartDockerDesktop() {
+			info("Docker 데몬 기동 대기 중 (최대 90초)...")
+			deadline := time.Now().Add(90 * time.Second)
+			for time.Now().Before(deadline) {
+				time.Sleep(3 * time.Second)
+				if _, err := runCmd("", "docker", "info"); err == nil {
+					ok("Docker 데몬 응답 확인")
+					return
+				}
+			}
+		}
+		errf("Docker 데몬이 아직 준비되지 않았습니다.")
+		fmt.Println("        Docker Desktop 을 수동으로 실행한 뒤 다시 시도해 주세요.")
 		fatal("Docker 데몬 미실행", nil)
 	}
 	ok("Docker 데몬 응답 확인")
+}
+
+// tryStartDockerDesktop : Windows 에서 Docker Desktop.exe 를 백그라운드로 시작.
+func tryStartDockerDesktop() bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	candidates := []string{
+		filepath.Join(os.Getenv("ProgramFiles"), "Docker", "Docker", "Docker Desktop.exe"),
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "Docker", "Docker", "Docker Desktop.exe"),
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			info("Docker Desktop 실행: %s", p)
+			cmd := exec.Command(p)
+			if err := cmd.Start(); err == nil {
+				return true
+			}
+		}
+	}
+	warn("Docker Desktop.exe 를 찾지 못했습니다.")
+	return false
 }
 
 // docker compose (v2) 우선, 실패 시 docker-compose (v1) 폴백
@@ -254,7 +318,7 @@ func actionLogs(root string) {
 	args := []string{"logs", "--tail=200"}
 	if strings.EqualFold(mode, "y") || strings.EqualFold(mode, "yes") {
 		args = append(args, "-f")
-		fmt.Println("\n[힌트] 종료하려면 Ctrl+C 를 누르세요.\n")
+		fmt.Println("\n[힌트] 종료하려면 Ctrl+C 를 누르세요.")
 	}
 	if svc != "" {
 		args = append(args, svc)
@@ -633,6 +697,30 @@ func openBrowser(url string) {
 	}
 }
 
+// ----------------------------- DB 로컬 백업 (메뉴 11) -----------------------------
+
+func actionDBBackup(root string) {
+	step("DB 로컬 백업 (scripts/db_backup.ps1)")
+	checkDockerInstalled()
+	script := filepath.Join(root, "scripts", "db_backup.ps1")
+	if _, err := os.Stat(script); err != nil {
+		errf("백업 스크립트를 찾을 수 없습니다: %s", script)
+		return
+	}
+	if runtime.GOOS != "windows" {
+		warn("현재 자동 백업 스크립트는 Windows 전용입니다. (OS=%s)", runtime.GOOS)
+		info("수동 실행: docker exec local-ai-mysql mysqldump ...")
+		return
+	}
+	err := runCmdStream(root, "powershell.exe",
+		"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script)
+	if err != nil {
+		errf("백업 실패: %v", err)
+		return
+	}
+	ok("백업 완료 (data/db_backups/ 확인)")
+}
+
 // ----------------------------- 메뉴 -----------------------------
 
 func printMenu() {
@@ -650,6 +738,7 @@ func printMenu() {
 	fmt.Println(" [8]  GPU/CPU 상태 확인")
 	fmt.Println(" [9]  Web UI 열기")
 	fmt.Println(" [10] Docker 서비스 복구")
+	fmt.Println(" [11] DB 로컬 백업")
 	fmt.Println(" [0]  종료")
 	fmt.Println("----------------------------------------------------")
 }
@@ -671,6 +760,207 @@ func shouldRunSetup(args []string) bool {
 		}
 	}
 	return false
+}
+
+// shouldRunFullInstaller : Docker Desktop / WSL2 부터 통째로 깔아주는 풀 인스톨러 모드.
+// 실행 파일 이름이 LocalAI_FullInstaller* 거나 인자로 fullsetup/full-install 이 오면 진입.
+func shouldRunFullInstaller(args []string) bool {
+	for _, a := range args {
+		switch strings.ToLower(strings.TrimLeft(a, "-/")) {
+		case "fullsetup", "full-install", "fullinstall", "all":
+			return true
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		base := strings.ToLower(filepath.Base(exe))
+		if strings.HasPrefix(base, "localai_fullinstaller") || strings.HasPrefix(base, "local-ai-fullinstaller") {
+			return true
+		}
+	}
+	return false
+}
+
+// ----------------------------- 풀 인스톨러 (Docker Desktop 부터 자동 설치) -----------------------------
+
+// isWindowsAdmin : 현재 프로세스가 관리자 권한으로 실행 중인지 검사.
+// net session 명령으로 간접 확인 (관리자만 성공).
+func isWindowsAdmin() bool {
+	if runtime.GOOS != "windows" {
+		return true
+	}
+	cmd := exec.Command("net", "session")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	return cmd.Run() == nil
+}
+
+// elevateAndExit : 현재 실행 파일을 관리자 권한으로 다시 실행하고 종료.
+// PowerShell Start-Process -Verb RunAs 를 통해 UAC 동의 한 번으로 권한 상승.
+func elevateAndExit() {
+	exe, err := os.Executable()
+	if err != nil {
+		fatal("자기 자신 경로를 알 수 없음", err)
+	}
+	info("관리자 권한이 필요합니다. UAC 창이 뜨면 '예' 를 눌러주세요.")
+	// 인자도 그대로 전달 (재진입 시 동일 분기 진입)
+	psArgs := []string{"-NoProfile", "-Command",
+		fmt.Sprintf("Start-Process -FilePath '%s' -Verb RunAs", strings.ReplaceAll(exe, "'", "''")),
+	}
+	if err := exec.Command("powershell.exe", psArgs...).Run(); err != nil {
+		fatal("관리자 권한으로 재실행 실패", err)
+	}
+	// 권한 없는 원래 프로세스는 종료
+	os.Exit(0)
+}
+
+// cleanupStaleDockerDataDir : 이전에 일반 사용자 권한으로 남겨진
+// C:\ProgramData\DockerDesktop 폴더를 정리한다.
+// (winget 무인 설치가 "must be owned by an elevated account" 로 실패하는 케이스 방지)
+func cleanupStaleDockerDataDir() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	p := `C:\ProgramData\DockerDesktop`
+	if _, err := os.Stat(p); err != nil {
+		return
+	}
+	info("기존 %s 정리 중...", p)
+	_ = exec.Command("takeown", "/F", p, "/R", "/D", "Y").Run()
+	_ = exec.Command("icacls", p, "/grant", "Administrators:F", "/T", "/C").Run()
+	if err := os.RemoveAll(p); err != nil {
+		warn("폴더 정리 실패(계속 진행): %v", err)
+	} else {
+		ok("기존 폴더 정리 완료")
+	}
+}
+
+// ensureWSL2 : wsl --status 확인 후 미설치면 wsl --install --no-launch.
+func ensureWSL2() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	step("WSL2 확인")
+	if err := exec.Command("wsl.exe", "--status").Run(); err == nil {
+		ok("WSL 사용 가능")
+		return
+	}
+	info("WSL2 가 없거나 비활성화 상태입니다. 자동 설치합니다... (수 분 소요)")
+	cmd := exec.Command("wsl.exe", "--install", "--no-launch")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		warn("wsl --install 실패(계속 진행): %v", err)
+		return
+	}
+	ok("WSL2 설치 명령 완료")
+	warn("WSL2 활성화를 위해 시스템 재부팅이 필요할 수 있습니다.")
+}
+
+// ensureDockerDesktopInstalled : winget 으로 Docker Desktop 무인 설치.
+// 이미 설치돼 있으면 스킵.
+func ensureDockerDesktopInstalled() bool {
+	step("Docker Desktop 확인")
+	if _, err := exec.LookPath("docker"); err == nil {
+		ok("Docker 이미 설치됨")
+		return true
+	}
+	// PATH 미반영 가능성 → 표준 경로 탐색
+	std := `C:\Program Files\Docker\Docker\resources\bin\docker.exe`
+	if _, err := os.Stat(std); err == nil {
+		ok("Docker 설치됨 (PATH 갱신 대기): %s", std)
+		// 현재 프로세스 PATH 에 추가
+		_ = os.Setenv("PATH", os.Getenv("PATH")+";C:\\Program Files\\Docker\\Docker\\resources\\bin")
+		return true
+	}
+	if _, err := exec.LookPath("winget"); err != nil {
+		errf("winget 없음 - Microsoft Store 에서 'App Installer' 를 먼저 설치해주세요.")
+		return false
+	}
+	cleanupStaleDockerDataDir()
+	info("winget 으로 Docker Desktop 설치 중... (500MB+, 수 분 소요)")
+	cmd := exec.Command("winget", "install",
+		"--id", "Docker.DockerDesktop",
+		"-e",
+		"--accept-source-agreements",
+		"--accept-package-agreements",
+		"--silent",
+		"--disable-interactivity",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		warn("winget 설치 종료 코드 비정상(이미 설치된 경우 정상): %v", err)
+	}
+	if _, err := os.Stat(std); err == nil {
+		ok("Docker Desktop 설치 확인")
+		_ = os.Setenv("PATH", os.Getenv("PATH")+";C:\\Program Files\\Docker\\Docker\\resources\\bin")
+		return true
+	}
+	errf("Docker 설치 후에도 docker.exe 를 찾지 못함")
+	return false
+}
+
+// startDockerDesktopAndWait : Docker Desktop 실행 + 데몬 응답 대기 (최대 timeout)
+func startDockerDesktopAndWait(timeout time.Duration) bool {
+	step("Docker Desktop 기동")
+	if _, err := runCmd("", "docker", "info"); err == nil {
+		ok("Docker 데몬 이미 응답함")
+		return true
+	}
+	if !tryStartDockerDesktop() {
+		warn("Docker Desktop.exe 자동 실행 실패")
+	}
+	info("Docker 데몬 기동 대기 중 (최대 %s)...", timeout)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(5 * time.Second)
+		if _, err := runCmd("", "docker", "info"); err == nil {
+			ok("Docker 데몬 응답 확인")
+			return true
+		}
+		fmt.Print(".")
+	}
+	fmt.Println()
+	errf("Docker 데몬이 시간 안에 기동되지 않았습니다.")
+	return false
+}
+
+// runFullInstaller : Docker Desktop 자동 설치 → WSL2 → Docker 기동 → setup flow
+func runFullInstaller(root string) {
+	fmt.Println()
+	fmt.Println("====================================================")
+	fmt.Println(" LocalAI Full Installer")
+	fmt.Println("   (Docker Desktop + WSL2 + LocalAI 일괄 설치)")
+	fmt.Println("====================================================")
+
+	// 0) 관리자 권한 확보 (UAC 한 번)
+	if runtime.GOOS == "windows" && !isWindowsAdmin() {
+		elevateAndExit() // 새 elevated 프로세스가 실행됨, 현재 프로세스 종료
+		return
+	}
+	ok("관리자 권한 확인")
+	info("설치 위치: %s", root)
+
+	// 1) Docker Desktop
+	if !ensureDockerDesktopInstalled() {
+		fatal("Docker Desktop 설치 실패", nil)
+	}
+
+	// 2) WSL2 (Docker Desktop 백엔드)
+	ensureWSL2()
+
+	// 3) Docker 데몬 기동
+	if !startDockerDesktopAndWait(5 * time.Minute) {
+		fmt.Println()
+		warn("자동 기동 실패 — Docker Desktop 을 한 번 수동 실행 후")
+		warn("이 LocalAI_FullInstaller.exe 를 다시 실행해주세요.")
+		warn("WSL2 신규 설치 후라면 시스템 재부팅이 필요합니다.")
+		pause()
+		os.Exit(1)
+	}
+
+	// 4) 기존 setup flow 재사용 (compose up + 브라우저)
+	runSetupFlow(root)
 }
 
 // runSetupFlow : 사진 20단계 그대로의 자동 흐름.
@@ -722,6 +1012,12 @@ func main() {
 		fatal("프로젝트 루트 탐지 실패", err)
 	}
 
+	// Step 21: LocalAI_FullInstaller.exe / `fullsetup` → Docker Desktop 부터 통째로 설치.
+	if shouldRunFullInstaller(os.Args[1:]) {
+		runFullInstaller(root)
+		return
+	}
+
 	// Step 20: LocalAI_Setup.exe 또는 `setup` 인자로 실행되면 메뉴 없이 자동 설치.
 	if shouldRunSetup(os.Args[1:]) {
 		runSetupFlow(root)
@@ -755,6 +1051,8 @@ func main() {
 			actionOpenWeb(root)
 		case "10":
 			actionRecover(root)
+		case "11":
+			actionDBBackup(root)
 		case "0", "q", "Q", "exit", "quit":
 			fmt.Println("종료합니다.")
 			return

@@ -206,6 +206,44 @@ def cmd_status() -> int:
     return 0
 
 
+def _lock_env_offline() -> bool:
+    """콜드스타트 성공 후 .env 의 BOOTSTRAP_ALLOW_DOWNLOAD 를 0 으로 잠근다.
+
+    이 프로젝트는 '콜드스타트 1회 후 완전 오프라인' 정책이므로,
+    한 번 모델이 받아진 후엔 외부 네트워크 다운로드를 영구 차단한다.
+    """
+    env_path = REPO_ROOT / ".env"
+    if not env_path.exists():
+        return False
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    lines = text.splitlines()
+    changed = False
+    found = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.split("=", 1)[0].strip() == "BOOTSTRAP_ALLOW_DOWNLOAD":
+            found = True
+            current = stripped.split("=", 1)[1].split("#", 1)[0].strip()
+            if current != "0":
+                comment = ""
+                if "#" in line:
+                    comment = "  # " + line.split("#", 1)[1].strip()
+                lines[i] = "BOOTSTRAP_ALLOW_DOWNLOAD=0" + comment + "  # auto-locked after cold-start"
+                changed = True
+            break
+    if not found:
+        lines.append("BOOTSTRAP_ALLOW_DOWNLOAD=0  # auto-locked after cold-start")
+        changed = True
+    if changed:
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return changed
+
+
 def cmd_run(force: bool, base_id: str, params_b: float) -> int:
     target = BASE_DIR / _safe_name(base_id)
     info = download_cold_start(
@@ -225,9 +263,14 @@ def cmd_run(force: bool, base_id: str, params_b: float) -> int:
     state["policy"] = "cold-start-only"
     _write_state(state)
 
+    # 콜드스타트 성공 → 완전 오프라인 모드로 전환
+    locked = _lock_env_offline()
+
     print(f"[cold-start] {info['status']}: {info['base_id']}")
     print(f"            path = {info['path']}  size = {info['size_bytes']:,} bytes")
     print(f"            state file = {STATE_FILE.relative_to(REPO_ROOT)}")
+    if locked:
+        print("[cold-start] .env 의 BOOTSTRAP_ALLOW_DOWNLOAD=0 으로 잠금 (이후 완전 오프라인)")
     return 0
 
 
