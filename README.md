@@ -98,6 +98,47 @@ docker compose up -d
 
 - Step 2: 각 서비스 Dockerfile 및 최소 동작 코드 추가
 - Step 3: 모델 다운로드/관리 스크립트
+
+---
+
+## 6. Step 17 — 전체 통합 테스트
+
+사진 17단계 흐름(`.exe → Docker Compose → Web UI → Backend → MySQL / Hardware
+Detector / Language Worker / Vision Server / LLM Server / Embedding Server`)을
+한 번에 점검할 수 있는 시나리오 러너가 추가됐습니다.
+
+### 시나리오 (사진 체크리스트와 1:1)
+
+1. `.exe` 실행
+2. Docker Compose 자동 실행
+3. Web UI 자동 오픈
+4. 코드 입력
+5. 모델 답변 생성
+6. 답변 저장
+7. embedding 저장
+8. 같은 요구사항 재입력
+9. 기존 답변 재사용
+10. 코드 이미지 업로드
+11. 이미지에서 코드 추출
+12. 추출 코드 기반 답변 생성
+13. GPU 없을 때 CPU fallback 확인
+
+### 사용 방법
+
+- **Web UI**: 좌측 사이드바의 `8 통합 테스트` 화면에서 `전체 시나리오 실행`
+  버튼을 누르면 13개 시나리오를 순차 실행하고 통과/실패/스킵 상태를 표 형태로
+  보여줍니다. 각 행을 클릭하면 단계별 evidence(answer_id, image_id, embedding 등)
+  JSON 을 확인할 수 있습니다.
+- **API**:
+  - `GET  /api/integration/checklist` — 시나리오 카탈로그
+  - `POST /api/integration/run` — 전체 시나리오 실행 (DB 기록)
+  - `GET  /api/integration/runs` — 실행 이력
+  - `GET  /api/integration/runs/{id}` — 실행 상세 + 단계별 결과
+
+### 저장 위치
+
+- MySQL: `integration_runs`, `integration_steps`
+  (`mysql/init/13_step17_integration.sql` 마이그레이션으로 자동 생성)
 - Step 4: 하드웨어 감지 → 모델 자동 선택 로직
 - Step 5: 런처 / 배포 패키징
 
@@ -688,3 +729,141 @@ curl http://localhost:8000/api/optimize/runs?limit=10
 - [x] LLM 최적화 (`model-server /optimize`, 규칙 결과를 prompt 에 반영)
 - [x] 결과 비교 (`optimizer.compare` + unified diff)
 - [x] 저장 (`generated_code` + `optimized_code` + `optimization_runs` + `optimization_findings`)
+
+
+---
+
+## 19. Step 19 — 테스트 / 벤치마크
+
+사진 19단계 체크리스트(시스템 / AI 기능 / 성능)를 한 번의 호출로 평가하고
+항목별 통과·실패·N/A 와 측정값(ms) 을 영구 기록한다.
+
+### 19.1 체크리스트 (사진 1:1)
+
+| 분류 | 항목 |
+|---|---|
+| 시스템 | Windows 10 / Windows 11 / Docker 설치됨 / Docker 미설치 / GPU 있음 / GPU 없음 / RAM 부족 / 저장공간 부족 |
+| AI 기능 | 코드 입력 / 코드 이미지 입력 / 에러 이미지 입력 / 명세서 이미지 입력 / 답변 저장 / embedding 저장 / 과거 답변 재사용 / 여러 언어 입력 |
+| 성능 | CPU 모드 속도 / GPU 모드 속도 / 이미지 처리 속도 / 답변 생성 속도 / MySQL 검색 속도 / embedding 유사도 검색 속도 |
+
+### 19.2 추가된 데이터베이스 스키마
+
+마이그레이션 `mysql/init/14_step19_benchmark.sql` :
+
+| 테이블 | 용도 |
+|---|---|
+| `benchmark_runs`  | 벤치마크 1회 실행 (run_mode/OS/통과·실패 카운트/총지연 등) |
+| `benchmark_items` | 22개 체크리스트 항목별 결과 (status/value_ms/value_text/evidence) |
+
+상태값:
+
+- `passed`  : 조건 충족 또는 측정 성공 (성능 항목은 `perf_budget_ms` 이하)
+- `failed`  : 측정 실패 또는 budget 초과
+- `skipped` : 환경상 N/A (예: GPU 없음 환경에서 `GPU 있음` 항목)
+- `info`    : 판정 불가 (예: 호스트 OS 정보 부재)
+
+### 19.3 추가된 API
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET  | `/api/benchmark/checklist`    | 22개 항목 카탈로그 (분류별 그룹) |
+| POST | `/api/benchmark/run`          | 전체 실행 + DB 기록 (한 번 호출에 22개 평가) |
+| GET  | `/api/benchmark/runs`         | 과거 실행 이력 |
+| GET  | `/api/benchmark/runs/{id}`    | 실행 상세 + 항목별 결과 |
+
+`POST /api/benchmark/run` 의 주요 옵션:
+
+- `host_info.os_name` / `host_info.os_version` — 런처가 호스트 OS 를 알려주면
+  Windows 10 / 11 분류가 정확해진다 (백엔드 컨테이너에서는 직접 식별 불가).
+- `host_info.docker_installed` — Docker 미설치 시나리오를 강제 평가할 때 사용.
+- `ram_low_threshold_gb` (기본 8) / `disk_low_threshold_gb` (기본 10)
+  — "RAM 부족 / 저장공간 부족" 판정 기준.
+- `perf_budget_ms` (기본 5000) — 성능 항목의 통과 기준.
+
+### 19.4 Web UI
+
+좌측 사이드바 `9 테스트 / 벤치마크` 화면에서 `전체 벤치마크 실행` 버튼을
+누르면 22개 항목을 순차 실행하고 분류별 표(시스템/AI 기능/성능)에
+통과·실패·N/A·info 와 `ms` 측정값을 표시한다. 행을 클릭하면 단계별
+evidence(answer_id, image_id, embedding_id 등) JSON 을 볼 수 있고,
+`최근 실행 기록` 으로 과거 run 을 다시 표시한다.
+
+### 19.5 사용 예
+
+```bash
+# 1) 전체 벤치마크 실행 (런처가 호스트 OS 를 같이 알려주면 가장 정확)
+curl -X POST http://localhost:8000/api/benchmark/run \
+  -H 'content-type: application/json' \
+  -d '{
+        "triggered_by": "cli",
+        "host_info": {"os_name": "Windows", "os_version": "11"},
+        "ram_low_threshold_gb": 8,
+        "disk_low_threshold_gb": 10,
+        "perf_budget_ms": 5000
+      }'
+
+# 2) 특정 항목만 건너뛰기 (예: 이미지 처리는 vision-server 가 placeholder 라 스킵)
+curl -X POST http://localhost:8000/api/benchmark/run \
+  -H 'content-type: application/json' \
+  -d '{"skip_items": ["image_speed", "spec_image_input"]}'
+
+# 3) 카탈로그 / 이력 / 상세
+curl http://localhost:8000/api/benchmark/checklist
+curl http://localhost:8000/api/benchmark/runs?limit=10
+curl http://localhost:8000/api/benchmark/runs/1
+```
+
+
+
+---
+
+## 20. Step 20 — 최종 배포 구조 완성 (LocalAI_Setup.exe)
+
+사용자가 실제로 설치 가능한 형태로 배포 구조를 완성한 단계입니다.
+사진 20단계 흐름을 그대로 구현합니다.
+
+`
+사용자 다운로드
+   ↓
+LocalAI_Setup.exe 실행
+   ↓
+필수 구성 확인       (Docker Desktop / Compose / .env / 디렉터리 / GPU·CPU)
+   ↓
+Docker Compose 실행  (up -d --build → health check)
+   ↓
+브라우저 자동 실행   (기본 브라우저로 http://localhost:WEB_UI_PORT)
+   ↓
+로컬 AI 사용
+`
+
+### 20.1 산출물
+
+| 파일 | 설명 |
+| --- | --- |
+| `launcher/dist/LocalAI_Setup.exe` | 더블클릭 시 메뉴 없이 위 흐름을 자동 실행하는 설치 진입점 |
+| `launcher/dist/local-ai-launcher.exe` | 일상 운영(실행/중지/로그/복구) 메뉴 런처 (Step 18) |
+| `dist/LocalAI_Setup/` | 사용자에게 그대로 전달 가능한 폴더 |
+| `dist/LocalAI_Setup-<yyyymmdd>.zip` | 위 폴더의 zip 배포본 |
+
+LocalAI_Setup.exe 와 local-ai-launcher.exe 는 **동일 바이너리**이며,
+실행 파일 이름이 `LocalAI_Setup` 으로 시작하면 메뉴 없이 자동 설치
+모드로 진입합니다 (local-ai-launcher.exe setup 또는 --setup 인자도 동일).
+
+### 20.2 빌드 / 패키징
+
+`powershell
+# launcher 빌드 (LocalAI_Setup.exe + local-ai-launcher.exe)
+pwsh -File .\launcher\build.ps1
+
+# 배포 폴더 + zip 생성 (위 빌드를 자동으로 호출)
+pwsh -File .\scripts\package-release.ps1
+`
+
+옵션은 `launcher/README.md` 의 *Step 20 — 최종 배포 구조* 섹션을 참고하세요.
+
+### 20.3 사용자 사용 흐름
+
+1. `LocalAI_Setup-<ver>.zip` 다운로드 → 압축 해제
+2. `LocalAI_Setup.exe` 더블클릭
+3. 자동으로: 필수 구성 확인 → `docker compose up -d --build` → health check → 브라우저 오픈
+4. 다음 실행부터는 `local-ai-launcher.exe` 메뉴(`[2] 실행`) 사용

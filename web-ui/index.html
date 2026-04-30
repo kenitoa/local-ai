@@ -157,6 +157,8 @@
       <button class="nav-item" data-screen="search"><span class="nav-num">5</span>저장된 답변 검색</button>
       <button class="nav-item" data-screen="system"><span class="nav-num">6</span>시스템 상태</button>
       <button class="nav-item" data-screen="language"><span class="nav-num">7</span>언어 호환</button>
+      <button class="nav-item" data-screen="integration"><span class="nav-num">8</span>통합 테스트</button>
+      <button class="nav-item" data-screen="benchmark"><span class="nav-num">9</span>테스트 / 벤치마크</button>
     </nav>
     <div class="sidebar-footer">
       <div>모드: <span id="sidebar-mode-badge" class="badge unknown">…</span></div>
@@ -484,6 +486,214 @@
         </div>
       </div>
     </section>
+
+    <!-- =========================================================== -->
+    <!-- 8) 통합 테스트 (Step 17) -->
+    <!-- =========================================================== -->
+    <section id="screen-integration" class="screen">
+      <h1>통합 테스트</h1>
+      <p class="muted">.exe → Docker Compose → Web UI → Backend → MySQL / Hardware Detector / Language Worker / Vision Server / LLM Server / Embedding Server 까지 전체 컴포넌트를 한 번에 점검합니다.</p>
+
+      <div class="card">
+        <div class="row">
+          <div class="col">
+            <label for="it-requirement">요구사항 (시나리오 4~9 공유)</label>
+            <input id="it-requirement" type="text" placeholder="비워두면 기본 샘플 사용" />
+          </div>
+          <div class="col">
+            <label for="it-language">언어 (시나리오 4~12 공유)</label>
+            <input id="it-language" type="text" value="python" />
+          </div>
+          <div class="col">
+            <label for="it-model">모델</label>
+            <input id="it-model" type="text" value="stub-echo" />
+          </div>
+        </div>
+        <label for="it-code" style="margin-top:0.6rem">코드 (비우면 기본 샘플 사용)</label>
+        <textarea id="it-code" class="code" placeholder="def slow_sum(n): ..." style="min-height:140px"></textarea>
+
+        <div class="actions" style="margin-top:0.8rem">
+          <button class="primary" id="it-run">전체 시나리오 실행</button>
+          <button class="secondary" id="it-reload">체크리스트 새로고침</button>
+          <button class="secondary" id="it-history">최근 실행 기록</button>
+          <span class="muted" id="it-status"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 class="grow">통합 테스트 시나리오</h2>
+          <span class="muted" id="it-summary">대기 중…</span>
+        </div>
+        <div style="overflow:auto">
+          <table id="it-checklist">
+            <thead>
+              <tr>
+                <th style="width:32px"></th>
+                <th style="width:48px">#</th>
+                <th>시나리오</th>
+                <th style="width:120px">분류</th>
+                <th style="width:90px">상태</th>
+                <th style="width:90px">지연</th>
+                <th>메시지</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="7" class="muted">로딩 중…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="it-evidence-card" style="display:none">
+        <h2>단계별 증거 (evidence)</h2>
+        <pre class="code" id="it-evidence"></pre>
+      </div>
+
+      <div class="card" id="it-history-card" style="display:none">
+        <h2>최근 통합 테스트 실행</h2>
+        <div style="overflow:auto">
+          <table id="it-history-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>상태</th><th>모드</th><th>통과/실패/스킵</th>
+                <th>지연</th><th>시작</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- 9) 테스트 / 벤치마크 (Step 19) -->
+    <!-- =========================================================== -->
+    <section id="screen-benchmark" class="screen">
+      <h1>테스트 / 벤치마크</h1>
+      <p class="muted">시스템 / AI 기능 / 성능 테스트를 한 번에 실행하고 항목별 통과·실패·N/A 와 측정값(ms) 을 기록합니다.</p>
+
+      <div class="card">
+        <div class="row">
+          <div class="col">
+            <label for="bm-host-os">호스트 OS (런처가 알려주는 값)</label>
+            <input id="bm-host-os" type="text" placeholder="예: Windows" />
+          </div>
+          <div class="col">
+            <label for="bm-host-osver">OS 버전 / 빌드</label>
+            <input id="bm-host-osver" type="text" placeholder="예: 11 / 22631" />
+          </div>
+          <div class="col">
+            <label for="bm-model">모델</label>
+            <input id="bm-model" type="text" value="stub-echo" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <label for="bm-ram-th">RAM 부족 임계값 (GB)</label>
+            <input id="bm-ram-th" type="number" step="0.5" value="8" />
+          </div>
+          <div class="col">
+            <label for="bm-disk-th">저장공간 부족 임계값 (GB)</label>
+            <input id="bm-disk-th" type="number" step="1" value="10" />
+          </div>
+          <div class="col">
+            <label for="bm-budget">성능 기준 (ms)</label>
+            <input id="bm-budget" type="number" step="100" value="5000" />
+          </div>
+        </div>
+        <div class="actions" style="margin-top:0.8rem">
+          <button class="primary" id="bm-run">전체 벤치마크 실행</button>
+          <button class="secondary" id="bm-reload">체크리스트 새로고침</button>
+          <button class="secondary" id="bm-history">최근 실행 기록</button>
+          <span class="muted" id="bm-status"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 class="grow">시스템 테스트</h2>
+          <span class="muted" id="bm-summary-system">대기 중…</span>
+        </div>
+        <div style="overflow:auto">
+          <table id="bm-table-system">
+            <thead>
+              <tr>
+                <th style="width:32px"></th>
+                <th style="width:48px">#</th>
+                <th>항목</th>
+                <th style="width:110px">상태</th>
+                <th style="width:120px">값</th>
+                <th>메시지</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="6" class="muted">로딩 중…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 class="grow">AI 기능 테스트</h2>
+          <span class="muted" id="bm-summary-ai">대기 중…</span>
+        </div>
+        <div style="overflow:auto">
+          <table id="bm-table-ai">
+            <thead>
+              <tr>
+                <th style="width:32px"></th>
+                <th style="width:48px">#</th>
+                <th>항목</th>
+                <th style="width:110px">상태</th>
+                <th style="width:120px">값</th>
+                <th>메시지</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="6" class="muted">로딩 중…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 class="grow">성능 테스트</h2>
+          <span class="muted" id="bm-summary-perf">대기 중…</span>
+        </div>
+        <div style="overflow:auto">
+          <table id="bm-table-perf">
+            <thead>
+              <tr>
+                <th style="width:32px"></th>
+                <th style="width:48px">#</th>
+                <th>항목</th>
+                <th style="width:110px">상태</th>
+                <th style="width:140px">측정값 (ms)</th>
+                <th>메시지</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="6" class="muted">로딩 중…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="bm-evidence-card" style="display:none">
+        <h2>항목별 증거 (evidence)</h2>
+        <pre class="code" id="bm-evidence"></pre>
+      </div>
+
+      <div class="card" id="bm-history-card" style="display:none">
+        <h2>최근 벤치마크 실행</h2>
+        <div style="overflow:auto">
+          <table id="bm-history-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>상태</th><th>모드</th><th>OS</th>
+                <th>통과/실패/스킵/info</th><th>총지연</th><th>시작</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </main>
 
   <div id="toast" class="toast"></div>
@@ -536,7 +746,7 @@
   }
 
   // -------------------- Navigation --------------------
-  const screens = ['dashboard','code-input','image-upload','result','search','system','language'];
+  const screens = ['dashboard','code-input','image-upload','result','search','system','language','integration','benchmark'];
   function showScreen(name) {
     if (!screens.includes(name)) name = 'dashboard';
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -548,6 +758,8 @@
     if (name === 'dashboard') loadDashboard();
     if (name === 'search') searchAnswers();
     if (name === 'system') loadSystem();
+    if (name === 'integration') loadIntegrationChecklist();
+    if (name === 'benchmark') loadBenchmarkChecklist();
   }
   document.querySelectorAll('nav .nav-item').forEach(b => {
     b.addEventListener('click', () => showScreen(b.dataset.screen));
@@ -1042,6 +1254,359 @@
   $('lang-reload-catalog').addEventListener('click', loadLanguageCatalog);
   // 첫 진입 시 카탈로그 자동 로드
   loadLanguageCatalog();
+
+  // -------------------- 8) Integration Test (Step 17) --------------------
+  let integrationChecklist = [];
+  let lastIntegrationResult = null;
+
+  function statusBadge(status) {
+    if (status === 'passed') return '<span class="pill up"><span class="dot up"></span>passed</span>';
+    if (status === 'failed') return '<span class="pill down"><span class="dot down"></span>failed</span>';
+    if (status === 'skipped') return '<span class="badge unknown">skipped</span>';
+    if (status === 'running') return '<span class="badge cpu">running</span>';
+    return '<span class="badge unknown">' + escapeHtml(status || '-') + '</span>';
+  }
+  function statusIcon(status) {
+    if (status === 'passed')  return '<span style="color:var(--ok); font-weight:700">■</span>';
+    if (status === 'failed')  return '<span style="color:var(--bad); font-weight:700">■</span>';
+    if (status === 'skipped') return '<span style="color:var(--muted); font-weight:700">■</span>';
+    return '<span style="color:var(--muted)">□</span>';
+  }
+
+  function renderIntegrationTable(items, results) {
+    const tbody = $('it-checklist').querySelector('tbody');
+    tbody.innerHTML = '';
+    const byKey = {};
+    (results || []).forEach(r => { byKey[r.step_key] = r; });
+
+    items.forEach(it => {
+      const r = byKey[it.step_key] || {};
+      const status = r.status || (it.auto === false ? 'skipped' : 'pending');
+      const pillHtml = r.status ? statusBadge(r.status) : '<span class="badge unknown">대기</span>';
+      const evidence = r.evidence || r.evidence_json;
+      const tr = el('tr', { class: evidence ? 'clickable' : '', html: `
+        <td>${statusIcon(r.status)}</td>
+        <td>${it.step_no}</td>
+        <td><strong>${escapeHtml(it.label)}</strong></td>
+        <td><span class="muted">${escapeHtml(it.category || '-')}</span></td>
+        <td>${pillHtml}</td>
+        <td>${r.latency_ms != null ? r.latency_ms + ' ms' : '-'}</td>
+        <td><span class="muted">${escapeHtml(r.message || '-')}</span></td>
+      ` });
+      if (evidence) {
+        tr.addEventListener('click', () => {
+          $('it-evidence-card').style.display = '';
+          $('it-evidence').textContent =
+            `[${it.step_no}] ${it.label}\n\n` + JSON.stringify(evidence, null, 2);
+        });
+      }
+      tbody.appendChild(tr);
+    });
+    if (items.length === 0) {
+      tbody.appendChild(el('tr', {}, el('td', { colspan: 7, class: 'muted' }, '체크리스트가 비어 있습니다.')));
+    }
+  }
+
+  async function loadIntegrationChecklist() {
+    if (integrationChecklist.length === 0) {
+      try {
+        const r = await api('/api/integration/checklist');
+        integrationChecklist = r.items || [];
+      } catch (e) {
+        toast('체크리스트 로드 실패: ' + e.message, 'error');
+        return;
+      }
+    }
+    renderIntegrationTable(integrationChecklist, (lastIntegrationResult || {}).steps || []);
+    if (lastIntegrationResult) {
+      $('it-summary').textContent =
+        `run #${lastIntegrationResult.run_id} · status=${lastIntegrationResult.status} · ` +
+        `${lastIntegrationResult.passed}/${lastIntegrationResult.total_steps} 통과 · ` +
+        `${lastIntegrationResult.failed} 실패 · ${lastIntegrationResult.skipped} 스킵`;
+    } else {
+      $('it-summary').textContent = '실행 대기 중';
+    }
+  }
+
+  async function runIntegration() {
+    const requirement = $('it-requirement').value.trim();
+    const code = $('it-code').value;
+    const language = $('it-language').value.trim() || 'python';
+    const model = $('it-model').value.trim() || 'stub-echo';
+    $('it-run').disabled = true;
+    $('it-status').textContent = '실행 중… (이미지/embedding/추출 등 모든 시나리오를 순차 실행)';
+    $('it-evidence-card').style.display = 'none';
+    try {
+      const res = await api('/api/integration/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requirement: requirement || null,
+          code: code || null,
+          code_language: language,
+          model: model,
+          triggered_by: 'web-ui',
+          environment_passed: { web_ui_open: true },
+        }),
+      });
+      lastIntegrationResult = res;
+      $('it-status').textContent =
+        `완료 · run #${res.run_id} · ${res.passed}/${res.total_steps} 통과 (총 ${res.total_latency_ms} ms)`;
+      const cls = res.status === 'passed' ? 'ok' : (res.status === 'failed' ? 'error' : '');
+      toast(`통합 테스트 ${res.status} (#${res.run_id})`, cls);
+      renderIntegrationTable(integrationChecklist, res.steps || []);
+      $('it-summary').textContent =
+        `run #${res.run_id} · status=${res.status} · ${res.passed}/${res.total_steps} 통과 · ${res.failed} 실패 · ${res.skipped} 스킵`;
+    } catch (e) {
+      $('it-status').textContent = '실패: ' + e.message;
+      toast('통합 테스트 실행 실패: ' + e.message, 'error');
+    } finally {
+      $('it-run').disabled = false;
+    }
+  }
+
+  async function loadIntegrationHistory() {
+    $('it-history-card').style.display = '';
+    const tbody = $('it-history-table').querySelector('tbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">로딩 중…</td></tr>';
+    try {
+      const r = await api('/api/integration/runs?limit=20');
+      tbody.innerHTML = '';
+      (r.items || []).forEach(it => {
+        const tr = el('tr', { class: 'clickable', html: `
+          <td>#${it.id}</td>
+          <td>${statusBadge(it.status)}</td>
+          <td><span class="muted">${escapeHtml(it.run_mode || '-')} / ${escapeHtml(it.accelerator || '-')}</span></td>
+          <td>${it.passed_steps}P · ${it.failed_steps}F · ${it.skipped_steps}S / ${it.total_steps}</td>
+          <td>${it.total_latency_ms != null ? it.total_latency_ms + ' ms' : '-'}</td>
+          <td><span class="muted">${escapeHtml(it.started_at || '-')}</span></td>
+        ` });
+        tr.addEventListener('click', async () => {
+          try {
+            const detail = await api('/api/integration/runs/' + it.id);
+            lastIntegrationResult = {
+              run_id: it.id, status: it.status,
+              passed: it.passed_steps, failed: it.failed_steps,
+              skipped: it.skipped_steps, total_steps: it.total_steps,
+              total_latency_ms: it.total_latency_ms,
+              steps: detail.steps || [],
+            };
+            renderIntegrationTable(integrationChecklist, detail.steps || []);
+            $('it-summary').textContent =
+              `run #${it.id} · status=${it.status} · ${it.passed_steps}/${it.total_steps} 통과 · ${it.failed_steps} 실패 · ${it.skipped_steps} 스킵`;
+            toast('run #' + it.id + ' 결과를 표시 중', 'ok');
+          } catch (e) {
+            toast('상세 조회 실패: ' + e.message, 'error');
+          }
+        });
+        tbody.appendChild(tr);
+      });
+      if ((r.items || []).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">실행 기록이 없습니다.</td></tr>';
+      }
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">기록 조회 실패: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  $('it-run').addEventListener('click', runIntegration);
+  $('it-reload').addEventListener('click', () => {
+    integrationChecklist = []; lastIntegrationResult = null;
+    $('it-evidence-card').style.display = 'none';
+    loadIntegrationChecklist();
+  });
+  $('it-history').addEventListener('click', loadIntegrationHistory);
+
+  // -------------------- 9) Benchmark (Step 19) --------------------
+  let benchmarkChecklist = [];     // [{item_no,item_key,label,category}, ...]
+  let lastBenchmarkResult = null;  // POST /api/benchmark/run 응답
+
+  function bmStatusBadge(status) {
+    if (status === 'passed')  return '<span class="pill up"><span class="dot up"></span>passed</span>';
+    if (status === 'failed')  return '<span class="pill down"><span class="dot down"></span>failed</span>';
+    if (status === 'skipped') return '<span class="badge unknown">skipped</span>';
+    if (status === 'info')    return '<span class="badge cpu">info</span>';
+    if (status === 'running') return '<span class="badge cpu">running</span>';
+    return '<span class="badge unknown">' + escapeHtml(status || '-') + '</span>';
+  }
+  function bmStatusIcon(status) {
+    if (status === 'passed')  return '<span style="color:var(--ok); font-weight:700">■</span>';
+    if (status === 'failed')  return '<span style="color:var(--bad); font-weight:700">■</span>';
+    if (status === 'skipped') return '<span style="color:var(--muted); font-weight:700">■</span>';
+    if (status === 'info')    return '<span style="color:var(--accent); font-weight:700">■</span>';
+    return '<span style="color:var(--muted)">□</span>';
+  }
+
+  function renderBenchmarkCategory(category, tableId, items, results) {
+    const tbody = $(tableId).querySelector('tbody');
+    tbody.innerHTML = '';
+    const byKey = {};
+    (results || []).forEach(r => { byKey[r.item_key] = r; });
+    const filtered = items.filter(it => it.category === category);
+    filtered.forEach(it => {
+      const r = byKey[it.item_key] || {};
+      const status = r.status || 'pending';
+      const pillHtml = r.status ? bmStatusBadge(r.status) : '<span class="badge unknown">대기</span>';
+      const evidence = r.evidence || r.evidence_json;
+      const valueCell = (category === 'perf')
+        ? (r.value_ms != null ? r.value_ms + ' ms' : (r.value_text || '-'))
+        : (r.value_text || (r.value_ms != null ? r.value_ms + ' ms' : '-'));
+      const tr = el('tr', { class: evidence ? 'clickable' : '', html: `
+        <td>${bmStatusIcon(r.status)}</td>
+        <td>${it.item_no}</td>
+        <td><strong>${escapeHtml(it.label)}</strong></td>
+        <td>${pillHtml}</td>
+        <td><span class="muted">${escapeHtml(valueCell)}</span></td>
+        <td><span class="muted">${escapeHtml(r.message || '-')}</span></td>
+      ` });
+      if (evidence) {
+        tr.addEventListener('click', () => {
+          $('bm-evidence-card').style.display = '';
+          $('bm-evidence').textContent =
+            `[${it.item_no}] ${it.label}\n\n` + JSON.stringify(evidence, null, 2);
+        });
+      }
+      tbody.appendChild(tr);
+    });
+    if (filtered.length === 0) {
+      tbody.appendChild(el('tr', {}, el('td', { colspan: 6, class: 'muted' }, '항목이 없습니다.')));
+    }
+  }
+
+  function renderBenchmarkAll(items, results) {
+    renderBenchmarkCategory('system', 'bm-table-system', items, results);
+    renderBenchmarkCategory('ai',     'bm-table-ai',     items, results);
+    renderBenchmarkCategory('perf',   'bm-table-perf',   items, results);
+
+    // 카테고리별 요약
+    const counts = { system: { p:0,f:0,s:0,i:0 }, ai: { p:0,f:0,s:0,i:0 }, perf: { p:0,f:0,s:0,i:0 } };
+    const byKey = {};
+    (results || []).forEach(r => { byKey[r.item_key] = r; });
+    items.forEach(it => {
+      const r = byKey[it.item_key];
+      if (!r || !counts[it.category]) return;
+      if (r.status === 'passed')  counts[it.category].p++;
+      if (r.status === 'failed')  counts[it.category].f++;
+      if (r.status === 'skipped') counts[it.category].s++;
+      if (r.status === 'info')    counts[it.category].i++;
+    });
+    function fmt(c) { return `${c.p} 통과 · ${c.f} 실패 · ${c.s} 스킵 · ${c.i} info`; }
+    if (results && results.length) {
+      $('bm-summary-system').textContent = fmt(counts.system);
+      $('bm-summary-ai').textContent     = fmt(counts.ai);
+      $('bm-summary-perf').textContent   = fmt(counts.perf);
+    } else {
+      $('bm-summary-system').textContent = '실행 대기 중';
+      $('bm-summary-ai').textContent     = '실행 대기 중';
+      $('bm-summary-perf').textContent   = '실행 대기 중';
+    }
+  }
+
+  async function loadBenchmarkChecklist() {
+    if (benchmarkChecklist.length === 0) {
+      try {
+        const r = await api('/api/benchmark/checklist');
+        benchmarkChecklist = r.items || [];
+      } catch (e) {
+        toast('벤치마크 체크리스트 로드 실패: ' + e.message, 'error');
+        return;
+      }
+    }
+    renderBenchmarkAll(benchmarkChecklist, (lastBenchmarkResult || {}).items || []);
+  }
+
+  async function runBenchmark() {
+    const osName = $('bm-host-os').value.trim();
+    const osVer  = $('bm-host-osver').value.trim();
+    const model  = $('bm-model').value.trim() || 'stub-echo';
+    const ramTh  = parseFloat($('bm-ram-th').value)  || 8;
+    const diskTh = parseFloat($('bm-disk-th').value) || 10;
+    const budget = parseInt($('bm-budget').value, 10) || 5000;
+    $('bm-run').disabled = true;
+    $('bm-status').textContent = '실행 중… (시스템 / AI / 성능 테스트를 순차 실행)';
+    $('bm-evidence-card').style.display = 'none';
+    try {
+      const body = {
+        triggered_by: 'web-ui',
+        model: model,
+        ram_low_threshold_gb: ramTh,
+        disk_low_threshold_gb: diskTh,
+        perf_budget_ms: budget,
+      };
+      if (osName || osVer) {
+        body.host_info = { os_name: osName || null, os_version: osVer || null };
+      }
+      const res = await api('/api/benchmark/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      lastBenchmarkResult = res;
+      $('bm-status').textContent =
+        `완료 · run #${res.run_id} · ${res.passed}/${res.total_items} 통과 · ` +
+        `${res.failed} 실패 · ${res.skipped} 스킵 · ${res.info} info (총 ${res.total_latency_ms} ms)`;
+      const cls = res.status === 'passed' ? 'ok' : (res.status === 'failed' ? 'error' : '');
+      toast(`벤치마크 ${res.status} (#${res.run_id})`, cls);
+      renderBenchmarkAll(benchmarkChecklist, res.items || []);
+    } catch (e) {
+      $('bm-status').textContent = '실패: ' + e.message;
+      toast('벤치마크 실행 실패: ' + e.message, 'error');
+    } finally {
+      $('bm-run').disabled = false;
+    }
+  }
+
+  async function loadBenchmarkHistory() {
+    $('bm-history-card').style.display = '';
+    const tbody = $('bm-history-table').querySelector('tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">로딩 중…</td></tr>';
+    try {
+      const r = await api('/api/benchmark/runs?limit=20');
+      tbody.innerHTML = '';
+      (r.items || []).forEach(it => {
+        const tr = el('tr', { class: 'clickable', html: `
+          <td>#${it.id}</td>
+          <td>${bmStatusBadge(it.status)}</td>
+          <td><span class="muted">${escapeHtml(it.run_mode || '-')} / ${escapeHtml(it.accelerator || '-')}</span></td>
+          <td><span class="muted">${escapeHtml((it.os_name || '-') + ' ' + (it.os_version || ''))}</span></td>
+          <td>${it.passed_items}P · ${it.failed_items}F · ${it.skipped_items}S · ${it.info_items}I / ${it.total_items}</td>
+          <td>${it.total_latency_ms != null ? it.total_latency_ms + ' ms' : '-'}</td>
+          <td><span class="muted">${escapeHtml(it.started_at || '-')}</span></td>
+        ` });
+        tr.addEventListener('click', async () => {
+          try {
+            const detail = await api('/api/benchmark/runs/' + it.id);
+            lastBenchmarkResult = {
+              run_id: it.id, status: it.status,
+              passed: it.passed_items, failed: it.failed_items,
+              skipped: it.skipped_items, info: it.info_items,
+              total_items: it.total_items,
+              total_latency_ms: it.total_latency_ms,
+              items: detail.items || [],
+            };
+            renderBenchmarkAll(benchmarkChecklist, detail.items || []);
+            toast('run #' + it.id + ' 결과를 표시 중', 'ok');
+          } catch (e) {
+            toast('상세 조회 실패: ' + e.message, 'error');
+          }
+        });
+        tbody.appendChild(tr);
+      });
+      if ((r.items || []).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="muted">실행 기록이 없습니다.</td></tr>';
+      }
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="7" class="muted">기록 조회 실패: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  $('bm-run').addEventListener('click', runBenchmark);
+  $('bm-reload').addEventListener('click', () => {
+    benchmarkChecklist = []; lastBenchmarkResult = null;
+    $('bm-evidence-card').style.display = 'none';
+    loadBenchmarkChecklist();
+  });
+  $('bm-history').addEventListener('click', loadBenchmarkHistory);
 })();
 </script>
 </body>

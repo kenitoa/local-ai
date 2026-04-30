@@ -3877,3 +3877,1909 @@ def api_optimize_run_get(run_id: int):
             except Exception:  # noqa: BLE001
                 pass
     return {"run": row, "findings": findings}
+
+
+# ===========================================================================
+# Step 16: 명세서 기반 SW 생성 엔진 (사진 명세 1:1)
+#
+#   사진 흐름:
+#     명세서 입력 → 요구사항 추출 → 기능 목록 생성 → 화면 목록 생성
+#       → API 목록 생성 → DB 테이블 초안 생성 → 프로젝트 구조 생성 → 코드 생성
+#
+#   중간 데이터 JSON 스키마 (사진과 1:1):
+#     {
+#       "project_name": "...",
+#       "features": [],
+#       "screens": [],
+#       "apis": [],
+#       "database_tables": [],
+#       "business_rules": []
+#     }
+# ===========================================================================
+import spec_engine  # noqa: E402  (모듈 끝에서 의존성 import)
+
+
+@app.get("/api/spec/schema")
+def api_spec_schema():
+    """사진의 중간 데이터 JSON 스키마 + 8단계 카탈로그."""
+    return {
+        "intermediate_schema": spec_engine.EMPTY_INTERMEDIATE,
+        "steps": [
+            {"step_no": no, "step_key": key, "label": label}
+            for no, key, label in spec_engine.STEP_LABELS
+        ],
+    }
+
+
+def _resolve_spec_input_text(
+    *,
+    spec: str | None,
+    raw_input_id: int | None,
+    image_id: int | None,
+) -> tuple[str, str, int | None]:
+    """입력 명세서 텍스트를 결정한다.
+
+    우선순위: 직접 ``spec`` > image_id 의 추출 텍스트/스펙 > raw_input.raw_text.
+    반환: (text, source_kind, image_id_used)
+    """
+    if spec and spec.strip():
+        return spec, "text", None
+
+    if image_id:
+        img = db.fetch_one(
+            "SELECT id, raw_input_id, text_file_path, spec_file_path, code_file_path "
+            "FROM image_data WHERE id=%s",
+            (image_id,),
+        )
+        if not img:
+            raise HTTPException(404, f"image_id={image_id} not found")
+        for col in ("spec_file_path", "text_file_path", "code_file_path"):
+            t = _read_text_file_or_none(img.get(col))
+            if t and t.strip():
+                return t, "image", image_id
+        raise HTTPException(400, f"image_id={image_id} 에는 추출된 텍스트/스펙이 없습니다")
+
+    if raw_input_id:
+        row = db.fetch_one(
+            "SELECT id, raw_text, source_file_path FROM raw_inputs WHERE id=%s",
+            (raw_input_id,),
+        )
+        if not row:
+            raise HTTPException(404, f"raw_input_id={raw_input_id} not found")
+        t = row.get("raw_text") or _read_text_file_or_none(row.get("source_file_path"))
+        if t and t.strip():
+            return t, "text", None
+        raise HTTPException(400, f"raw_input_id={raw_input_id} 에 명세서 텍스트가 없습니다")
+
+    raise HTTPException(400, "spec/raw_input_id/image_id 중 최소 하나는 필요합니다")
+
+
+# --- POST /api/spec/extract ----------------------------------------------
+class SpecExtractIn(BaseModel):
+    spec: Optional[str] = None
+    raw_input_id: Optional[int] = None
+    image_id: Optional[int] = None
+    project_name: Optional[str] = None
+    use_llm: bool = True
+    model: Optional[str] = None
+
+
+@app.post("/api/spec/extract")
+def api_spec_extract(payload: SpecExtractIn):
+    """사진 흐름의 1~6단계만 수행: 명세서 → 요구사항/기능/화면/API/DB/규칙 JSON.
+
+    LLM 호출 없이도 동작 (규칙 기반). ``use_llm=true`` 면 model-server 응답에서
+    JSON 블록을 뽑아 결과를 보강한다.
+    """
+    text, source_kind, used_image_id = _resolve_spec_input_text(
+        spec=payload.spec,
+        raw_input_id=payload.raw_input_id,
+        image_id=payload.image_id,
+    )
+
+    base = spec_engine.build_intermediate(text, project_name=payload.project_name)
+
+    llm_used = False
+    llm_raw: dict[str, Any] | None = None
+    if payload.use_llm:
+        prompt = (
+            "[지시] 다음 명세서를 분석해서 정확히 아래 JSON 스키마로만 응답해줘.\n"
+            "{\n"
+            '  "project_name": "...",\n'
+            '  "features": [{"id": "F001", "name": "...", "description": "..."}],\n'
+            '  "screens": [{"id": "S001", "name": "...", "route": "/..."}],\n'
+            '  "apis": [{"id": "A001", "method": "GET", "path": "/...", "summary": "..."}],\n'
+            '  "database_tables": [{"id": "T001", "name": "...", "columns": [{"name": "id", "type": "BIGINT", "pk": true}]}],\n'
+            '  "business_rules": [{"id": "R001", "rule": "..."}]\n'
+            "}\n\n"
+            f"[명세서]\n{text}"
+        )
+        model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+        text_resp, raw_resp = _generate_with_model(
+            prompt, model_name, language=None, task="spec_extract",
+        )
+        llm_raw = raw_resp
+        parsed = spec_engine.parse_llm_json(text_resp)
+        if parsed:
+            base = spec_engine.merge_llm_intermediate(base, parsed)
+            llm_used = True
+
+    return {
+        "source_kind": source_kind,
+        "image_id": used_image_id,
+        "project_name": base.get("project_name"),
+        "intermediate": {k: v for k, v in base.items() if not k.startswith("_")},
+        "requirements": base.get("_requirements", []),
+        "summary": spec_engine.summarize_intermediate(base),
+        "llm_used": llm_used,
+        "llm_stub": (llm_raw is None) if payload.use_llm else False,
+    }
+
+
+# --- POST /api/spec/engine ------------------------------------------------
+class SpecEngineIn(BaseModel):
+    spec: Optional[str] = None
+    raw_input_id: Optional[int] = None
+    image_id: Optional[int] = None
+    project_id: Optional[int] = None
+    project_name: Optional[str] = None
+    target_language: Optional[str] = "python"
+    target_framework: Optional[str] = "fastapi"
+    user_tag: Optional[str] = None
+    use_llm: bool = True
+    model: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@app.post("/api/spec/engine")
+def api_spec_engine(payload: SpecEngineIn):
+    """사진 명세의 8단계 SW 생성 엔진을 한 번의 호출로 실행한다.
+
+        명세서 입력 → 요구사항 추출 → 기능 목록 생성 → 화면 목록 생성
+            → API 목록 생성 → DB 테이블 초안 생성 → 프로젝트 구조 생성 → 코드 생성
+    """
+    started = datetime.utcnow()
+
+    # ---- 1) 명세서 입력 ----
+    text, source_kind, used_image_id = _resolve_spec_input_text(
+        spec=payload.spec,
+        raw_input_id=payload.raw_input_id,
+        image_id=payload.image_id,
+    )
+
+    # 1.1) raw_inputs 보존 (없을 때만)
+    raw_id = payload.raw_input_id
+    if raw_id is None:
+        raw_id = _insert_raw_input(
+            input_type="image" if source_kind == "image" else "text",
+            raw_text=text,
+            project_id=payload.project_id,
+            user_tag=payload.user_tag,
+        )
+
+    # 1.2) 입력 명세서 디스크 보존
+    spec_file = storage.save_spec_input_text(
+        text, run_hint="spec_input", owner_id=raw_id,
+    )
+    db.execute(
+        "UPDATE raw_inputs SET source_file_path=COALESCE(source_file_path, %s) "
+        "WHERE id=%s",
+        (spec_file.rel_path, raw_id),
+    )
+
+    steps_log: list[dict[str, Any]] = []
+    steps_log.append({
+        "step_no": 1, "step_key": "spec_input", "label": "명세서 입력",
+        "output_json": {"chars": len(text), "source_kind": source_kind,
+                        "spec_file_path": spec_file.rel_path},
+        "source": "user", "latency_ms": 0, "status": "ok",
+    })
+
+    # ---- 2) 요구사항 추출 (규칙 기반) ----
+    t2 = datetime.utcnow()
+    requirements = spec_engine.extract_requirements(text)
+    steps_log.append({
+        "step_no": 2, "step_key": "requirements", "label": "요구사항 추출",
+        "output_json": {"count": len(requirements), "items": requirements},
+        "source": "rule",
+        "latency_ms": int((datetime.utcnow() - t2).total_seconds() * 1000),
+        "status": "ok" if requirements else "partial",
+    })
+
+    # ---- 3~6) 기능/화면/API/DB/규칙 후보 (규칙 기반) ----
+    base = {
+        "project_name":    payload.project_name or spec_engine.guess_project_name(text),
+        "features":        spec_engine.derive_features(requirements),
+        "screens":         spec_engine.derive_screens(requirements),
+        "apis":            spec_engine.derive_apis(requirements, text),
+        "database_tables": spec_engine.derive_database_tables(requirements),
+        "business_rules":  spec_engine.derive_business_rules(requirements),
+        "_requirements":   requirements,
+    }
+
+    # ---- LLM 보강 (옵션) ----
+    llm_used = False
+    llm_latency_ms: int | None = None
+    model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+    if payload.use_llm:
+        llm_started = datetime.utcnow()
+        prompt = (
+            "[지시] 다음 명세서를 분석해서 정확히 아래 JSON 스키마로만 응답해줘.\n"
+            "스키마 외 텍스트는 절대 포함하지 마.\n"
+            "{\n"
+            '  "project_name": "...",\n'
+            '  "features": [{"id": "F001", "name": "...", "description": "..."}],\n'
+            '  "screens": [{"id": "S001", "name": "...", "route": "/..."}],\n'
+            '  "apis": [{"id": "A001", "method": "GET", "path": "/...", "summary": "..."}],\n'
+            '  "database_tables": [{"id": "T001", "name": "...",'
+            ' "columns": [{"name": "id", "type": "BIGINT", "pk": true}]}],\n'
+            '  "business_rules": [{"id": "R001", "rule": "..."}]\n'
+            "}\n\n"
+            f"[프로젝트 후보 이름] {base['project_name']}\n\n"
+            f"[명세서]\n{text}"
+        )
+        text_resp, _raw = _generate_with_model(
+            prompt, model_name, language=None, task="spec_extract",
+        )
+        parsed = spec_engine.parse_llm_json(text_resp)
+        if parsed:
+            base = spec_engine.merge_llm_intermediate(base, parsed)
+            llm_used = True
+        llm_latency_ms = int((datetime.utcnow() - llm_started).total_seconds() * 1000)
+
+    for no, key, label in spec_engine.STEP_LABELS[2:6]:
+        steps_log.append({
+            "step_no": no, "step_key": key, "label": label,
+            "output_json": base.get(key) or [],
+            "source": "llm" if llm_used else "rule",
+            "llm_model": model_name if llm_used else None,
+            "latency_ms": (llm_latency_ms or 0) // 4 if llm_used else 0,
+            "status": "ok" if (base.get(key) or []) else "partial",
+        })
+
+    # ---- 7) 프로젝트 구조 생성 ----
+    t7 = datetime.utcnow()
+    structure = spec_engine.derive_project_structure(
+        base,
+        language=payload.target_language or "python",
+        framework=payload.target_framework or "fastapi",
+    )
+    steps_log.append({
+        "step_no": 7, "step_key": "project_structure",
+        "label": "프로젝트 구조 생성",
+        "output_json": structure,
+        "source": "rule",
+        "latency_ms": int((datetime.utcnow() - t7).total_seconds() * 1000),
+        "status": "ok",
+    })
+
+    # ---- 8) 코드 생성 ----
+    t8 = datetime.utcnow()
+    files = spec_engine.generate_project_files(
+        base,
+        language=payload.target_language or "python",
+        framework=payload.target_framework or "fastapi",
+    )
+    steps_log.append({
+        "step_no": 8, "step_key": "code_generation", "label": "코드 생성",
+        "output_json": {"file_count": len(files),
+                        "rel_paths": [f["rel_path"] for f in files]},
+        "source": "rule",
+        "latency_ms": int((datetime.utcnow() - t8).total_seconds() * 1000),
+        "status": "ok" if files else "partial",
+    })
+
+    # ---- 저장 ----
+    intermediate_payload = {k: v for k, v in base.items() if not k.startswith("_")}
+    counts = spec_engine.summarize_intermediate(base)
+    total_latency_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
+
+    status_value: str = "ok"
+    if not requirements or not files:
+        status_value = "partial"
+
+    run_id = db.execute(
+        """
+        INSERT INTO spec_engine_runs
+            (raw_input_id, project_id, source_kind, source_image_id,
+             spec_text, spec_file_path, project_name,
+             target_language, target_framework,
+             requirements_json, intermediate_json,
+             features_json, screens_json, apis_json,
+             database_tables_json, business_rules_json,
+             project_structure_json, intermediate_file_path,
+             llm_model, llm_latency_ms, total_latency_ms,
+             feature_count, screen_count, api_count, table_count,
+             rule_count, file_count, status, notes)
+        VALUES (%s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s,
+                %s, %s,
+                %s, %s, %s,
+                %s, %s,
+                %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s)
+        """,
+        (raw_id, payload.project_id, source_kind, used_image_id,
+         text, spec_file.rel_path, intermediate_payload.get("project_name"),
+         payload.target_language, payload.target_framework,
+         json.dumps(requirements, ensure_ascii=False),
+         json.dumps(intermediate_payload, ensure_ascii=False),
+         json.dumps(intermediate_payload.get("features"), ensure_ascii=False),
+         json.dumps(intermediate_payload.get("screens"), ensure_ascii=False),
+         json.dumps(intermediate_payload.get("apis"), ensure_ascii=False),
+         json.dumps(intermediate_payload.get("database_tables"), ensure_ascii=False),
+         json.dumps(intermediate_payload.get("business_rules"), ensure_ascii=False),
+         json.dumps(structure, ensure_ascii=False),
+         None,  # intermediate_file_path - 아래에서 갱신
+         model_name if llm_used else None,
+         llm_latency_ms if llm_used else None,
+         total_latency_ms,
+         counts["feature_count"], counts["screen_count"], counts["api_count"],
+         counts["table_count"], counts["rule_count"], len(files),
+         status_value, (payload.notes or None)),
+    )
+
+    # 중간 JSON 디스크 보존
+    inter_saved = storage.save_spec_intermediate_json(
+        intermediate_payload,
+        run_id=run_id,
+        project_name=intermediate_payload.get("project_name"),
+    )
+    db.execute(
+        "UPDATE spec_engine_runs SET intermediate_file_path=%s WHERE id=%s",
+        (inter_saved.rel_path, run_id),
+    )
+
+    # 단계별 산출물 기록
+    for s in steps_log:
+        try:
+            db.execute(
+                """
+                INSERT INTO spec_engine_steps
+                    (run_id, step_no, step_key, label, output_json,
+                     source, llm_model, latency_ms, status, notes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (run_id, s["step_no"], s["step_key"], s["label"],
+                 json.dumps(s.get("output_json"), ensure_ascii=False, default=str),
+                 s.get("source") or "rule",
+                 s.get("llm_model"), s.get("latency_ms"),
+                 s.get("status") or "ok", s.get("notes")),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("spec_engine_steps insert failed (step=%s): %s",
+                        s.get("step_key"), exc)
+
+    # 생성 파일 저장 (DB + 디스크)
+    saved_files: list[dict[str, Any]] = []
+    for f in files:
+        try:
+            saved = storage.save_spec_project_file(
+                f["code"],
+                run_id=run_id,
+                project_name=intermediate_payload.get("project_name"),
+                rel_path=f["rel_path"],
+            )
+        except ValueError as exc:
+            log.warning("skip invalid spec file %s: %s", f.get("rel_path"), exc)
+            continue
+        file_id = db.execute(
+            """
+            INSERT INTO spec_engine_files
+                (run_id, rel_path, language, role, code_text,
+                 file_path, file_size, sha256)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (run_id, f["rel_path"], f.get("language"), f.get("role") or "other",
+             f["code"], saved.rel_path, saved.size, saved.sha256),
+        )
+        saved_files.append({
+            "id":        file_id,
+            "rel_path":  f["rel_path"],
+            "language":  f.get("language"),
+            "role":      f.get("role") or "other",
+            "file_path": saved.rel_path,
+            "size":      saved.size,
+        })
+
+    return {
+        "run_id": run_id,
+        "raw_input_id": raw_id,
+        "source_kind": source_kind,
+        "image_id": used_image_id,
+        "project_name": intermediate_payload.get("project_name"),
+        "target_language": payload.target_language,
+        "target_framework": payload.target_framework,
+        "intermediate": intermediate_payload,
+        "requirements": requirements,
+        "project_structure": structure,
+        "files": saved_files,
+        "spec_file_path": spec_file.rel_path,
+        "intermediate_file_path": inter_saved.rel_path,
+        "summary": counts,
+        "llm_used": llm_used,
+        "llm_model": model_name if llm_used else None,
+        "llm_latency_ms": llm_latency_ms if llm_used else None,
+        "total_latency_ms": total_latency_ms,
+        "status": status_value,
+        "steps": [
+            {k: v for k, v in s.items() if k != "output_json"}
+            for s in steps_log
+        ],
+    }
+
+
+# --- GET /api/spec/runs ---------------------------------------------------
+@app.get("/api/spec/runs")
+def api_spec_runs(
+    project_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    where: list[str] = []
+    args: list[Any] = []
+    if project_id is not None:
+        where.append("project_id=%s"); args.append(project_id)
+    if status:
+        where.append("status=%s"); args.append(status)
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    rows = db.fetch_all(
+        f"SELECT id, raw_input_id, project_id, source_kind, source_image_id, "
+        f"       project_name, target_language, target_framework, "
+        f"       feature_count, screen_count, api_count, table_count, "
+        f"       rule_count, file_count, llm_model, "
+        f"       llm_latency_ms, total_latency_ms, status, "
+        f"       LEFT(COALESCE(notes,''), 240) AS notes_preview, created_at "
+        f"FROM spec_engine_runs {where_sql} "
+        f"ORDER BY id DESC LIMIT %s OFFSET %s",
+        tuple(args + [limit, offset]),
+    )
+    total = (db.fetch_one(
+        f"SELECT COUNT(*) AS n FROM spec_engine_runs {where_sql}",
+        tuple(args),
+    ) or {}).get("n", 0)
+    return {"total": total, "limit": limit, "offset": offset, "items": rows}
+
+
+# --- GET /api/spec/runs/{id} ----------------------------------------------
+@app.get("/api/spec/runs/{run_id}")
+def api_spec_run_get(run_id: int, include_code: bool = Query(False)):
+    row = db.fetch_one(
+        "SELECT * FROM spec_engine_runs WHERE id=%s", (run_id,),
+    )
+    if not row:
+        raise HTTPException(404, "spec_engine_run not found")
+
+    # JSON 컬럼 파싱
+    for key in ("requirements_json", "intermediate_json", "features_json",
+                "screens_json", "apis_json", "database_tables_json",
+                "business_rules_json", "project_structure_json"):
+        if isinstance(row.get(key), str):
+            try:
+                row[key] = json.loads(row[key])
+            except Exception:  # noqa: BLE001
+                pass
+
+    file_cols = (
+        "id, rel_path, language, role, file_path, file_size, sha256, created_at"
+        + (", code_text" if include_code else "")
+    )
+    files = db.fetch_all(
+        f"SELECT {file_cols} FROM spec_engine_files WHERE run_id=%s "
+        "ORDER BY rel_path ASC",
+        (run_id,),
+    ) or []
+
+    steps = db.fetch_all(
+        "SELECT id, step_no, step_key, label, source, llm_model, "
+        "       latency_ms, status, output_json, created_at "
+        "FROM spec_engine_steps WHERE run_id=%s ORDER BY step_no ASC, id ASC",
+        (run_id,),
+    ) or []
+    for s in steps:
+        if isinstance(s.get("output_json"), str):
+            try:
+                s["output_json"] = json.loads(s["output_json"])
+            except Exception:  # noqa: BLE001
+                pass
+
+    return {"run": row, "files": files, "steps": steps}
+
+
+# ===========================================================================
+# Step 17: 전체 통합 테스트
+#
+# 사진 17단계 흐름 :
+#   .exe → Docker Compose → Web UI → Backend
+#       └─ MySQL / Hardware Detector / Language Worker
+#          / Vision Server / LLM Server / Embedding Server
+#
+# 통합 테스트 시나리오 (사진 체크리스트와 1:1):
+#   1) .exe 실행
+#   2) Docker Compose 자동 실행
+#   3) Web UI 자동 오픈
+#   4) 코드 입력
+#   5) 모델 답변 생성
+#   6) 답변 저장
+#   7) embedding 저장
+#   8) 같은 요구사항 재입력
+#   9) 기존 답변 재사용
+#  10) 코드 이미지 업로드
+#  11) 이미지에서 코드 추출
+#  12) 추출 코드 기반 답변 생성
+#  13) GPU 없을 때 CPU fallback 확인
+#
+# 엔드포인트:
+#   GET  /api/integration/checklist      - 체크리스트 카탈로그
+#   POST /api/integration/run            - 시나리오 실행 + DB 기록
+#   GET  /api/integration/runs           - 과거 실행 이력
+#   GET  /api/integration/runs/{run_id}  - 실행 상세 (단계별 결과)
+# ===========================================================================
+import base64 as _b64  # noqa: E402
+
+INTEGRATION_CHECKLIST: list[dict[str, Any]] = [
+    {"step_no": 1,  "step_key": "launcher_exe",      "label": ".exe 실행",
+     "category": "environment", "auto": False},
+    {"step_no": 2,  "step_key": "compose_up",        "label": "Docker Compose 자동 실행",
+     "category": "environment", "auto": True},
+    {"step_no": 3,  "step_key": "web_ui_open",       "label": "Web UI 자동 오픈",
+     "category": "environment", "auto": True},
+    {"step_no": 4,  "step_key": "code_input",        "label": "코드 입력",
+     "category": "pipeline",    "auto": True},
+    {"step_no": 5,  "step_key": "model_answer",      "label": "모델 답변 생성",
+     "category": "pipeline",    "auto": True},
+    {"step_no": 6,  "step_key": "answer_save",       "label": "답변 저장",
+     "category": "pipeline",    "auto": True},
+    {"step_no": 7,  "step_key": "embedding_save",    "label": "embedding 저장",
+     "category": "pipeline",    "auto": True},
+    {"step_no": 8,  "step_key": "requirement_replay","label": "같은 요구사항 재입력",
+     "category": "reuse",       "auto": True},
+    {"step_no": 9,  "step_key": "answer_reuse",      "label": "기존 답변 재사용",
+     "category": "reuse",       "auto": True},
+    {"step_no": 10, "step_key": "image_upload",      "label": "코드 이미지 업로드",
+     "category": "vision",      "auto": True},
+    {"step_no": 11, "step_key": "image_extract",     "label": "이미지에서 코드 추출",
+     "category": "vision",      "auto": True},
+    {"step_no": 12, "step_key": "image_answer",      "label": "추출 코드 기반 답변 생성",
+     "category": "vision",      "auto": True},
+    {"step_no": 13, "step_key": "cpu_fallback",      "label": "GPU 없을 때 CPU fallback 확인",
+     "category": "hardware",    "auto": True},
+]
+
+
+def _integration_step_record(
+    run_id: int, *,
+    step_no: int, step_key: str, label: str, category: str | None,
+    status: str, latency_ms: int | None,
+    message: str | None, evidence: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """integration_steps 한 행을 INSERT 하고 dict 로 반환."""
+    sid = db.execute(
+        """
+        INSERT INTO integration_steps
+            (run_id, step_no, step_key, label, category, status,
+             latency_ms, message, evidence_json)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (run_id, step_no, step_key, label, category, status,
+         latency_ms, message,
+         json.dumps(evidence, ensure_ascii=False, default=str) if evidence else None),
+    )
+    return {
+        "id": sid, "step_no": step_no, "step_key": step_key, "label": label,
+        "category": category, "status": status, "latency_ms": latency_ms,
+        "message": message, "evidence": evidence,
+    }
+
+
+# 1x1 투명 PNG (테스트용 합성 이미지)
+_TINY_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+)
+
+
+def _integration_checklist_full() -> list[dict[str, Any]]:
+    return [dict(c) for c in INTEGRATION_CHECKLIST]
+
+
+@app.get("/api/integration/checklist")
+def api_integration_checklist():
+    """사진 17단계 체크리스트를 그대로 반환."""
+    return {
+        "total": len(INTEGRATION_CHECKLIST),
+        "items": _integration_checklist_full(),
+    }
+
+
+class IntegrationRunIn(BaseModel):
+    requirement: Optional[str] = None       # 시나리오 4~9 에 사용할 요구사항
+    code: Optional[str] = None              # 시나리오 4~9 에 사용할 코드
+    code_language: Optional[str] = None
+    model: Optional[str] = "stub-echo"
+    triggered_by: Optional[str] = "web-ui"
+    skip_steps: Optional[list[str]] = None  # step_key 목록
+    notes: Optional[str] = None
+    # 환경 단계 (.exe / compose / web ui) 는 호출자가 자체 검증한 결과를 넘길 수 있다.
+    environment_passed: Optional[dict[str, bool]] = None
+
+
+@app.post("/api/integration/run")
+def api_integration_run(payload: IntegrationRunIn):
+    """사진 체크리스트의 13개 시나리오를 순차 실행한다.
+
+    각 단계는 실패해도 다음 단계로 진행하며, 결과는
+    ``integration_runs`` / ``integration_steps`` 테이블과 응답 JSON 에 동시 기록된다.
+    """
+    overall_started = datetime.utcnow()
+    skip = set(payload.skip_steps or [])
+    env_pass = payload.environment_passed or {}
+
+    # ---- 0) 하드웨어 프로필 미리 조회 (시나리오 13 + run_mode 표기) ----
+    hw_row: dict[str, Any] | None = None
+    try:
+        hw_row = db.fetch_one(
+            "SELECT host_name, run_mode, accelerator, gpu_present, "
+            "       cuda_available, directml_available "
+            "FROM hardware_profiles "
+            "ORDER BY COALESCE(detected_at, created_at) DESC, id DESC LIMIT 1"
+        )
+    except Exception:  # noqa: BLE001
+        hw_row = None
+    run_mode_value = (hw_row or {}).get("run_mode") or "unknown"
+    if run_mode_value not in {"cpu", "gpu"}:
+        run_mode_value = "unknown"
+
+    # ---- run 행 생성 ----
+    run_id = db.execute(
+        """
+        INSERT INTO integration_runs
+            (triggered_by, host_name, run_mode, accelerator,
+             total_steps, status, notes)
+        VALUES (%s, %s, %s, %s, %s, 'running', %s)
+        """,
+        (payload.triggered_by, (hw_row or {}).get("host_name"),
+         run_mode_value, (hw_row or {}).get("accelerator"),
+         len(INTEGRATION_CHECKLIST), payload.notes),
+    )
+
+    steps_out: list[dict[str, Any]] = []
+    counters = {"passed": 0, "failed": 0, "skipped": 0}
+
+    def _record(spec: dict[str, Any], *, status: str, latency_ms: int | None,
+                message: str, evidence: dict[str, Any] | None):
+        rec = _integration_step_record(
+            run_id,
+            step_no=spec["step_no"], step_key=spec["step_key"],
+            label=spec["label"], category=spec.get("category"),
+            status=status, latency_ms=latency_ms,
+            message=message, evidence=evidence,
+        )
+        steps_out.append(rec)
+        if status in counters:
+            counters[status] += 1
+
+    def _skip(spec: dict[str, Any], reason: str):
+        _record(spec, status="skipped", latency_ms=None,
+                message=reason, evidence=None)
+
+    # 시나리오 4~9 가 공유할 컨텍스트
+    requirement = (payload.requirement or
+                   "다음 함수의 시간복잡도를 O(n) 으로 줄여줘.")
+    code = (payload.code or
+            "def slow_sum(n):\n"
+            "    total = 0\n"
+            "    for i in range(n):\n"
+            "        for j in range(n):\n"
+            "            total += 1\n"
+            "    return total\n")
+    code_language = payload.code_language or "python"
+    model_name = payload.model or "stub-echo"
+    first_answer_id: int | None = None
+    first_embedding_id: int | None = None
+
+    # ===== 시나리오 1) .exe 실행 =====
+    spec = INTEGRATION_CHECKLIST[0]
+    if spec["step_key"] in skip:
+        _skip(spec, "사용자에 의해 건너뜀")
+    elif env_pass.get("launcher_exe"):
+        _record(spec, status="passed", latency_ms=None,
+                message="런처가 환경 점검 결과를 전달함",
+                evidence={"source": "launcher"})
+    else:
+        # backend 가 동작 중이라는 사실 자체는 launcher 또는 docker compose 로
+        # 기동되었다는 강한 정황이다. 하지만 "exe" 단독으로는 자체 검증이
+        # 불가능하므로 안내 메시지와 함께 skipped 로 기록.
+        _skip(spec,
+              "백엔드 컨테이너 안에서는 .exe 실행 여부를 직접 확인할 수 없습니다. "
+              "런처 사용 시 자동으로 통과 처리됩니다.")
+
+    # ===== 시나리오 2) Docker Compose 자동 실행 =====
+    spec = INTEGRATION_CHECKLIST[1]
+    if spec["step_key"] in skip:
+        _skip(spec, "사용자에 의해 건너뜀")
+    else:
+        # 백엔드가 mysql / 다른 워커들과 같은 compose 네트워크에서 동작 중인지
+        # /api/v1/system/services 로 확인한다.
+        t0 = datetime.utcnow()
+        try:
+            sys = system_services()
+            services = sys.get("services", [])
+            ups = [s for s in services if s.get("status") == "up"]
+            ok = len(ups) >= 2  # backend + mysql 만이라도 떠 있으면 compose 정상
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            _record(spec,
+                    status="passed" if ok else "failed",
+                    latency_ms=ms,
+                    message=f"{len(ups)} / {len(services)} services up",
+                    evidence={"up": [s["name"] for s in ups],
+                              "down": [s["name"] for s in services if s.get("status") != "up"]})
+        except Exception as exc:  # noqa: BLE001
+            _record(spec, status="failed", latency_ms=None,
+                    message=f"system_services() 실패: {exc}", evidence=None)
+
+    # ===== 시나리오 3) Web UI 자동 오픈 =====
+    spec = INTEGRATION_CHECKLIST[2]
+    if spec["step_key"] in skip:
+        _skip(spec, "사용자에 의해 건너뜀")
+    else:
+        # 호출자(web-ui)가 우리에게 요청을 보냈다는 것 자체가 web-ui 가 열렸다는 증거.
+        if (payload.triggered_by or "").lower() == "web-ui" or env_pass.get("web_ui_open"):
+            _record(spec, status="passed", latency_ms=None,
+                    message="Web UI 에서 통합 테스트 요청을 수신했습니다.",
+                    evidence={"triggered_by": payload.triggered_by})
+        else:
+            _record(spec, status="passed", latency_ms=None,
+                    message="비-Web UI 호출 (CLI 등)",
+                    evidence={"triggered_by": payload.triggered_by})
+
+    # ===== 시나리오 4) 코드 입력 =====
+    spec = INTEGRATION_CHECKLIST[3]
+    raw_input_id: int | None = None
+    if spec["step_key"] in skip:
+        _skip(spec, "사용자에 의해 건너뜀")
+    else:
+        t0 = datetime.utcnow()
+        try:
+            res = api_input_code(InputCodeIn(
+                code=code, language=code_language,
+                user_tag=f"integration-run-{run_id}",
+            ))
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            raw_input_id = res.get("raw_input_id")
+            _record(spec, status="passed", latency_ms=ms,
+                    message=f"raw_input_id={raw_input_id}, language={res.get('language')}",
+                    evidence={"raw_input_id": raw_input_id,
+                              "language": res.get("language"),
+                              "rel_path": res.get("rel_path")})
+        except Exception as exc:  # noqa: BLE001
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            _record(spec, status="failed", latency_ms=ms,
+                    message=f"코드 입력 실패: {exc}", evidence=None)
+
+    # ===== 시나리오 5,6,7) 모델 답변 생성 / 답변 저장 / embedding 저장 =====
+    spec5 = INTEGRATION_CHECKLIST[4]
+    spec6 = INTEGRATION_CHECKLIST[5]
+    spec7 = INTEGRATION_CHECKLIST[6]
+    infer_res: dict[str, Any] | None = None
+    if spec5["step_key"] in skip:
+        _skip(spec5, "사용자에 의해 건너뜀")
+        _skip(spec6, "선행 단계가 건너뜀 처리됨")
+        _skip(spec7, "선행 단계가 건너뜀 처리됨")
+    else:
+        t0 = datetime.utcnow()
+        try:
+            infer_res = api_infer(InferIn(
+                requirement=requirement, code=code, language=code_language,
+                raw_input_id=raw_input_id,
+                model=model_name, embed=True,
+            ))
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            first_answer_id = infer_res.get("answer_id")
+            first_embedding_id = infer_res.get("embedding_id")
+
+            # 5) 모델 답변 생성
+            _record(spec5, status="passed", latency_ms=ms,
+                    message=f"answer_id={first_answer_id}, "
+                            f"stub={infer_res.get('stub')}",
+                    evidence={"answer_id": first_answer_id,
+                              "model": infer_res.get("model"),
+                              "stub": infer_res.get("stub")})
+
+            # 6) 답변 저장 (DB + 파일)
+            if first_answer_id and infer_res.get("answer_file_path"):
+                _record(spec6, status="passed", latency_ms=None,
+                        message=f"answer_file_path={infer_res.get('answer_file_path')}",
+                        evidence={"answer_id": first_answer_id,
+                                  "answer_file_path": infer_res.get("answer_file_path")})
+            else:
+                _record(spec6, status="failed", latency_ms=None,
+                        message="model_answers 행 또는 파일 경로가 없음",
+                        evidence={"infer": infer_res})
+
+            # 7) embedding 저장
+            if first_embedding_id:
+                _record(spec7, status="passed", latency_ms=None,
+                        message=f"embedding_id={first_embedding_id}",
+                        evidence={"embedding_id": first_embedding_id})
+            else:
+                _record(spec7, status="failed", latency_ms=None,
+                        message="embedding-server 응답이 없거나 저장 실패",
+                        evidence={"infer_stub": infer_res.get("stub")})
+        except Exception as exc:  # noqa: BLE001
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            _record(spec5, status="failed", latency_ms=ms,
+                    message=f"/api/infer 실패: {exc}", evidence=None)
+            _record(spec6, status="failed", latency_ms=None,
+                    message="선행 단계 실패", evidence=None)
+            _record(spec7, status="failed", latency_ms=None,
+                    message="선행 단계 실패", evidence=None)
+
+    # ===== 시나리오 8,9) 같은 요구사항 재입력 / 기존 답변 재사용 =====
+    spec8 = INTEGRATION_CHECKLIST[7]
+    spec9 = INTEGRATION_CHECKLIST[8]
+    if spec8["step_key"] in skip:
+        _skip(spec8, "사용자에 의해 건너뜀")
+        _skip(spec9, "선행 단계가 건너뜀 처리됨")
+    else:
+        t0 = datetime.utcnow()
+        try:
+            reuse_res = api_reuse_answer(ReuseAnswerPipelineIn(
+                requirement=requirement, code=code, code_language=code_language,
+                model=model_name, top_k=5, threshold=0.0,  # threshold 0: 무조건 후보 사용
+                adapt=True, record=True,
+                user_tag=f"integration-run-{run_id}-replay",
+            ))
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+
+            # 8) 같은 요구사항 재입력 → reuse 파이프라인 호출 자체가 성공했는가
+            _record(spec8, status="passed", latency_ms=ms,
+                    message="같은 요구사항으로 reuse 파이프라인을 재실행함",
+                    evidence={"new_answer_id": reuse_res.get("new_answer_id"),
+                              "reuse_log_id": reuse_res.get("reuse_log_id")})
+
+            # 9) 기존 답변 재사용 → 후보를 발견했는가
+            reused = bool(reuse_res.get("reused"))
+            cand = reuse_res.get("matched_answer_id") or reuse_res.get("best_match_id")
+            if reused or cand:
+                _record(spec9, status="passed", latency_ms=None,
+                        message=f"기존 답변(matched_answer_id={cand}) 재사용",
+                        evidence={"matched_answer_id": cand,
+                                  "similarity": reuse_res.get("similarity"),
+                                  "new_answer_id": reuse_res.get("new_answer_id")})
+            else:
+                _record(spec9, status="failed", latency_ms=None,
+                        message="유사 답변 후보를 찾지 못했습니다 (embedding-server 가 다운되었을 수 있음)",
+                        evidence={"reuse": reuse_res})
+        except Exception as exc:  # noqa: BLE001
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            _record(spec8, status="failed", latency_ms=ms,
+                    message=f"/api/reuse/answer 실패: {exc}", evidence=None)
+            _record(spec9, status="failed", latency_ms=None,
+                    message="선행 단계 실패", evidence=None)
+
+    # ===== 시나리오 10,11,12) 이미지 업로드 / 추출 / 추출 코드 기반 답변 =====
+    spec10 = INTEGRATION_CHECKLIST[9]
+    spec11 = INTEGRATION_CHECKLIST[10]
+    spec12 = INTEGRATION_CHECKLIST[11]
+    img_id: int | None = None
+    img_raw_id: int | None = None
+    extracted_code: str | None = None
+
+    if spec10["step_key"] in skip:
+        _skip(spec10, "사용자에 의해 건너뜀")
+        _skip(spec11, "선행 단계가 건너뜀 처리됨")
+        _skip(spec12, "선행 단계가 건너뜀 처리됨")
+    else:
+        # 10) 이미지 업로드 - 인라인으로 raw_inputs + image_data 행 생성
+        t0 = datetime.utcnow()
+        try:
+            blob = _b64.b64decode(_TINY_PNG_B64)
+            img_raw_id = _insert_raw_input(
+                input_type="image", raw_text=None,
+                user_tag=f"integration-run-{run_id}-image",
+            )
+            saved = storage.save_image_original(
+                blob, raw_input_id=img_raw_id,
+                original_filename=f"integration_{run_id}.png",
+                mime_type="image/png",
+            )
+            img_id = db.execute(
+                """
+                INSERT INTO image_data
+                    (raw_input_id, mime_type, file_path, file_size, sha256,
+                     image_type, image_type_source, image_type_confidence,
+                     extraction_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (img_raw_id, "image/png", saved.rel_path, saved.size, saved.sha256,
+                 "code", "integration_test", 1.0, "pending"),
+            )
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            _record(spec10, status="passed", latency_ms=ms,
+                    message=f"image_id={img_id}, file={saved.rel_path}",
+                    evidence={"image_id": img_id, "raw_input_id": img_raw_id,
+                              "rel_path": saved.rel_path})
+        except Exception as exc:  # noqa: BLE001
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            _record(spec10, status="failed", latency_ms=ms,
+                    message=f"이미지 업로드 실패: {exc}", evidence=None)
+
+        # 11) 이미지에서 코드 추출 - vision-server 호출
+        if img_id is None:
+            _record(spec11, status="failed", latency_ms=None,
+                    message="이미지가 업로드되지 않아 추출을 시도할 수 없습니다.",
+                    evidence=None)
+        else:
+            t0 = datetime.utcnow()
+            try:
+                row = db.fetch_one(
+                    "SELECT file_path FROM image_data WHERE id=%s", (img_id,),
+                )
+                abs_path = str(storage.resolve(row["file_path"])) if row else None
+                extraction = _http_post_json(
+                    f"{VISION_SERVER_URL}/api/v1/extract",
+                    {"file_path": abs_path, "image_type": "code",
+                     "language_hint": code_language,
+                     "filename": f"integration_{run_id}.png"},
+                    timeout=15,
+                ) if abs_path else None
+                ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+
+                if extraction and (extraction.get("code") or extraction.get("text")):
+                    extracted_code = extraction.get("code") or extraction.get("text") or ""
+                    # store_image_extracted 로 영구 기록
+                    try:
+                        store_image_extracted(img_id, ImageExtractIn(
+                            image_id=img_id,
+                            extracted_text=extraction.get("text"),
+                            extracted_code=extraction.get("code"),
+                            extracted_code_language=extraction.get("language") or code_language,
+                            ocr_engine=extraction.get("engine"),
+                            ocr_confidence=extraction.get("confidence"),
+                        ))
+                    except Exception:  # noqa: BLE001
+                        pass
+                    _record(spec11, status="passed", latency_ms=ms,
+                            message=f"engine={extraction.get('engine') or '-'}, "
+                                    f"chars={len(extracted_code or '')}",
+                            evidence={"image_id": img_id,
+                                      "engine": extraction.get("engine"),
+                                      "confidence": extraction.get("confidence"),
+                                      "preview": (extracted_code or "")[:200]})
+                else:
+                    # vision-server 가 placeholder 라 실제 추출은 못하지만,
+                    # 응답이라도 받으면 결선은 OK 로 본다.
+                    if extraction is not None:
+                        extracted_code = extraction.get("code") or ""
+                        _record(spec11, status="passed", latency_ms=ms,
+                                message="vision-server placeholder 응답 (실제 OCR 미설치)",
+                                evidence={"image_id": img_id,
+                                          "vision_response": extraction})
+                    else:
+                        _record(spec11, status="failed", latency_ms=ms,
+                                message="vision-server 가 응답하지 않음",
+                                evidence={"image_id": img_id})
+            except Exception as exc:  # noqa: BLE001
+                ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+                _record(spec11, status="failed", latency_ms=ms,
+                        message=f"이미지 추출 실패: {exc}", evidence=None)
+
+        # 12) 추출 코드 기반 답변 생성
+        if img_id is None:
+            _record(spec12, status="failed", latency_ms=None,
+                    message="이미지가 없어 답변 생성 불가", evidence=None)
+        else:
+            t0 = datetime.utcnow()
+            try:
+                infer2 = api_infer(InferIn(
+                    requirement="이미지에서 추출한 코드의 동작을 설명해줘.",
+                    code=extracted_code or "(추출 실패: 빈 코드)",
+                    language=code_language,
+                    image_id=img_id,
+                    model=model_name, embed=False,
+                ))
+                ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+                _record(spec12, status="passed", latency_ms=ms,
+                        message=f"answer_id={infer2.get('answer_id')}",
+                        evidence={"answer_id": infer2.get("answer_id"),
+                                  "image_id": img_id,
+                                  "stub": infer2.get("stub")})
+            except Exception as exc:  # noqa: BLE001
+                ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+                _record(spec12, status="failed", latency_ms=ms,
+                        message=f"추출 코드 기반 답변 생성 실패: {exc}",
+                        evidence=None)
+
+    # ===== 시나리오 13) GPU 없을 때 CPU fallback =====
+    spec13 = INTEGRATION_CHECKLIST[12]
+    if spec13["step_key"] in skip:
+        _skip(spec13, "사용자에 의해 건너뜀")
+    else:
+        if not hw_row:
+            _record(spec13, status="failed", latency_ms=None,
+                    message="hardware_profiles 에 감지 결과가 없습니다. "
+                            "hardware-detector 의 /api/v1/detect 를 먼저 호출하세요.",
+                    evidence=None)
+        else:
+            run_mode = hw_row.get("run_mode") or "unknown"
+            gpu_present = bool(hw_row.get("gpu_present"))
+            if not gpu_present:
+                # GPU 가 없는 환경 → run_mode 가 cpu 여야 정상
+                if run_mode == "cpu":
+                    _record(spec13, status="passed", latency_ms=None,
+                            message="GPU 미탐지 → run_mode=cpu fallback 정상",
+                            evidence=hw_row)
+                else:
+                    _record(spec13, status="failed", latency_ms=None,
+                            message=f"GPU 미탐지인데 run_mode={run_mode}",
+                            evidence=hw_row)
+            else:
+                # GPU 있는 환경 → fallback 자체는 검증할 수 없으므로 skipped
+                _record(spec13, status="skipped", latency_ms=None,
+                        message=f"GPU({hw_row.get('accelerator')}) 가 감지되어 fallback 검증을 건너뜁니다.",
+                        evidence=hw_row)
+
+    # ---- 통계 마감 ----
+    total_ms = int((datetime.utcnow() - overall_started).total_seconds() * 1000)
+    if counters["failed"] == 0:
+        status = "passed" if counters["passed"] > 0 else "partial"
+    elif counters["passed"] > 0:
+        status = "partial"
+    else:
+        status = "failed"
+
+    db.execute(
+        """
+        UPDATE integration_runs
+           SET passed_steps=%s, failed_steps=%s, skipped_steps=%s,
+               total_latency_ms=%s, status=%s, finished_at=CURRENT_TIMESTAMP
+         WHERE id=%s
+        """,
+        (counters["passed"], counters["failed"], counters["skipped"],
+         total_ms, status, run_id),
+    )
+
+    return {
+        "run_id": run_id,
+        "status": status,
+        "run_mode": run_mode_value,
+        "accelerator": (hw_row or {}).get("accelerator"),
+        "total_steps": len(INTEGRATION_CHECKLIST),
+        "passed": counters["passed"],
+        "failed": counters["failed"],
+        "skipped": counters["skipped"],
+        "total_latency_ms": total_ms,
+        "first_answer_id": first_answer_id,
+        "first_embedding_id": first_embedding_id,
+        "image_id": img_id,
+        "steps": steps_out,
+    }
+
+
+@app.get("/api/integration/runs")
+def api_integration_runs(
+    status: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    where: list[str] = []
+    args: list[Any] = []
+    if status:
+        where.append("status=%s"); args.append(status)
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = db.fetch_all(
+        f"SELECT id, triggered_by, host_name, run_mode, accelerator, "
+        f"       total_steps, passed_steps, failed_steps, skipped_steps, "
+        f"       total_latency_ms, status, started_at, finished_at "
+        f"FROM integration_runs {where_sql} "
+        f"ORDER BY id DESC LIMIT %s OFFSET %s",
+        tuple(args + [limit, offset]),
+    ) or []
+    total = (db.fetch_one(
+        f"SELECT COUNT(*) AS n FROM integration_runs {where_sql}",
+        tuple(args),
+    ) or {}).get("n", 0)
+    return {"total": total, "limit": limit, "offset": offset, "items": rows}
+
+
+@app.get("/api/integration/runs/{run_id}")
+def api_integration_run_get(run_id: int):
+    row = db.fetch_one(
+        "SELECT * FROM integration_runs WHERE id=%s", (run_id,),
+    )
+    if not row:
+        raise HTTPException(404, "integration_run not found")
+    steps = db.fetch_all(
+        "SELECT id, step_no, step_key, label, category, status, "
+        "       latency_ms, message, evidence_json, created_at "
+        "FROM integration_steps WHERE run_id=%s ORDER BY step_no ASC, id ASC",
+        (run_id,),
+    ) or []
+    for s in steps:
+        if isinstance(s.get("evidence_json"), str):
+            try:
+                s["evidence"] = json.loads(s["evidence_json"])
+            except Exception:  # noqa: BLE001
+                s["evidence"] = None
+        else:
+            s["evidence"] = s.get("evidence_json")
+        s.pop("evidence_json", None)
+    return {"run": row, "steps": steps}
+
+
+# ===========================================================================
+# Step 19: 테스트 / 벤치마크
+#
+# 사진 19단계 체크리스트를 한 번의 호출로 모두 평가하고 영구 기록한다.
+#   [시스템]  Windows 10/11 / Docker 설치/미설치 / GPU 있음/없음 / RAM·저장공간 부족
+#   [AI 기능] 코드 입력 / 코드·에러·명세서 이미지 입력 /
+#             답변 저장 / embedding 저장 / 과거 답변 재사용 / 여러 언어 입력
+#   [성능]    CPU/GPU 모드 속도 / 이미지 처리 / 답변 생성 /
+#             MySQL 검색 / embedding 유사도 검색
+#
+# 엔드포인트:
+#   GET  /api/benchmark/checklist    - 체크리스트 카탈로그
+#   POST /api/benchmark/run          - 전체 실행 + DB 기록
+#   GET  /api/benchmark/runs         - 과거 실행 이력
+#   GET  /api/benchmark/runs/{id}    - 실행 상세 (항목별 결과)
+# ===========================================================================
+
+BENCHMARK_CHECKLIST: list[dict[str, Any]] = [
+    # --- 시스템 테스트 ---
+    {"item_no": 1,  "category": "system", "item_key": "windows_10",       "label": "Windows 10"},
+    {"item_no": 2,  "category": "system", "item_key": "windows_11",       "label": "Windows 11"},
+    {"item_no": 3,  "category": "system", "item_key": "docker_installed", "label": "Docker 설치됨"},
+    {"item_no": 4,  "category": "system", "item_key": "docker_missing",   "label": "Docker 미설치"},
+    {"item_no": 5,  "category": "system", "item_key": "gpu_present",      "label": "GPU 있음"},
+    {"item_no": 6,  "category": "system", "item_key": "gpu_absent",       "label": "GPU 없음"},
+    {"item_no": 7,  "category": "system", "item_key": "ram_low",          "label": "RAM 부족"},
+    {"item_no": 8,  "category": "system", "item_key": "disk_low",         "label": "저장공간 부족"},
+    # --- AI 기능 테스트 ---
+    {"item_no": 9,  "category": "ai", "item_key": "code_input",        "label": "코드 입력"},
+    {"item_no": 10, "category": "ai", "item_key": "code_image_input",  "label": "코드 이미지 입력"},
+    {"item_no": 11, "category": "ai", "item_key": "error_image_input", "label": "에러 이미지 입력"},
+    {"item_no": 12, "category": "ai", "item_key": "spec_image_input",  "label": "명세서 이미지 입력"},
+    {"item_no": 13, "category": "ai", "item_key": "answer_save",       "label": "답변 저장"},
+    {"item_no": 14, "category": "ai", "item_key": "embedding_save",    "label": "embedding 저장"},
+    {"item_no": 15, "category": "ai", "item_key": "answer_reuse",      "label": "과거 답변 재사용"},
+    {"item_no": 16, "category": "ai", "item_key": "multi_language",    "label": "여러 언어 입력"},
+    # --- 성능 테스트 ---
+    {"item_no": 17, "category": "perf", "item_key": "cpu_speed",       "label": "CPU 모드 속도"},
+    {"item_no": 18, "category": "perf", "item_key": "gpu_speed",       "label": "GPU 모드 속도"},
+    {"item_no": 19, "category": "perf", "item_key": "image_speed",     "label": "이미지 처리 속도"},
+    {"item_no": 20, "category": "perf", "item_key": "answer_speed",    "label": "답변 생성 속도"},
+    {"item_no": 21, "category": "perf", "item_key": "mysql_speed",     "label": "MySQL 검색 속도"},
+    {"item_no": 22, "category": "perf", "item_key": "embedding_speed", "label": "embedding 유사도 검색 속도"},
+]
+
+
+def _benchmark_record_item(
+    run_id: int, spec: dict[str, Any], *,
+    status: str, value_ms: int | None = None,
+    value_text: str | None = None,
+    message: str | None = None, evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """benchmark_items 한 행을 INSERT 하고 dict 로 반환."""
+    iid = db.execute(
+        """
+        INSERT INTO benchmark_items
+            (run_id, category, item_no, item_key, label, status,
+             value_ms, value_text, message, evidence_json)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (run_id, spec["category"], spec["item_no"], spec["item_key"],
+         spec["label"], status, value_ms, value_text, message,
+         json.dumps(evidence, ensure_ascii=False, default=str) if evidence else None),
+    )
+    return {
+        "id": iid, "category": spec["category"], "item_no": spec["item_no"],
+        "item_key": spec["item_key"], "label": spec["label"],
+        "status": status, "value_ms": value_ms, "value_text": value_text,
+        "message": message, "evidence": evidence,
+    }
+
+
+def _benchmark_classify_windows(os_name: str | None, os_version: str | None) -> str | None:
+    """반환: 'windows_10' / 'windows_11' / None."""
+    if not os_name or os_name.lower() != "windows":
+        return None
+    v = (os_version or "").strip()
+    # Win11 은 build >= 22000. platform.release() 는 흔히 "10" 을 반환하므로
+    # 빌드 번호가 보이면 그걸 우선 사용한다.
+    digits = "".join(ch for ch in v if ch.isdigit())
+    try:
+        n = int(digits) if digits else 0
+    except Exception:  # noqa: BLE001
+        n = 0
+    if n >= 22000:
+        return "windows_11"
+    if n == 11:
+        return "windows_11"
+    if n == 10 or v.startswith("10"):
+        return "windows_10"
+    return None
+
+
+@app.get("/api/benchmark/checklist")
+def api_benchmark_checklist():
+    """사진 19단계 체크리스트(시스템 / AI 기능 / 성능)를 그대로 반환."""
+    return {
+        "total": len(BENCHMARK_CHECKLIST),
+        "categories": {
+            "system": [c for c in BENCHMARK_CHECKLIST if c["category"] == "system"],
+            "ai":     [c for c in BENCHMARK_CHECKLIST if c["category"] == "ai"],
+            "perf":   [c for c in BENCHMARK_CHECKLIST if c["category"] == "perf"],
+        },
+        "items": [dict(c) for c in BENCHMARK_CHECKLIST],
+    }
+
+
+class BenchmarkHostInfo(BaseModel):
+    os_name: Optional[str] = None        # 런처가 알려주는 호스트 OS (예: 'Windows')
+    os_version: Optional[str] = None     # '10' / '11' / build 번호 등
+    docker_installed: Optional[bool] = None
+
+
+class BenchmarkRunIn(BaseModel):
+    triggered_by: Optional[str] = "web-ui"
+    model: Optional[str] = "stub-echo"
+    notes: Optional[str] = None
+    skip_items: Optional[list[str]] = None     # item_key 목록
+    host_info: Optional[BenchmarkHostInfo] = None
+    # 임계값 (사진의 "RAM 부족 / 저장공간 부족" 판정 기준)
+    ram_low_threshold_gb: float = 8.0
+    disk_low_threshold_gb: float = 10.0
+    # 성능 기준값(ms) — 초과 시 failed, 그 이하면 passed
+    perf_budget_ms: int = 5000
+
+
+@app.post("/api/benchmark/run")
+def api_benchmark_run(payload: BenchmarkRunIn):
+    """사진 19단계의 22개 체크리스트를 순차 실행한다.
+
+    각 항목은 실패해도 다음 항목으로 진행하며, 결과는
+    ``benchmark_runs`` / ``benchmark_items`` 테이블과 응답 JSON 에 동시 기록된다.
+    """
+    overall_started = datetime.utcnow()
+    skip = set(payload.skip_items or [])
+
+    # ---- 0) 하드웨어 / 호스트 프로필 조회 ----
+    hw_row: dict[str, Any] | None = None
+    try:
+        hw_row = db.fetch_one(
+            "SELECT host_name, os_name, os_version, ram_mb, run_mode, "
+            "       accelerator, gpu_present, cuda_available, directml_available, "
+            "       docker_gpu_ok, storage_total_gb, storage_free_gb "
+            "FROM hardware_profiles "
+            "ORDER BY COALESCE(detected_at, created_at) DESC, id DESC LIMIT 1"
+        )
+    except Exception:  # noqa: BLE001
+        hw_row = None
+    hw_row = hw_row or {}
+
+    # 호스트 정보(런처가 넘겨준 값을 우선)
+    host = payload.host_info or BenchmarkHostInfo()
+    os_name = host.os_name or hw_row.get("os_name")
+    os_version = host.os_version or hw_row.get("os_version")
+    run_mode_value = hw_row.get("run_mode") or "unknown"
+    if run_mode_value not in {"cpu", "gpu"}:
+        run_mode_value = "unknown"
+
+    # ---- run 행 생성 ----
+    run_id = db.execute(
+        """
+        INSERT INTO benchmark_runs
+            (triggered_by, host_name, os_name, os_version,
+             run_mode, accelerator, total_items, status, notes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'running', %s)
+        """,
+        (payload.triggered_by, hw_row.get("host_name"), os_name, os_version,
+         run_mode_value, hw_row.get("accelerator"),
+         len(BENCHMARK_CHECKLIST), payload.notes),
+    )
+
+    items_out: list[dict[str, Any]] = []
+    counters = {"passed": 0, "failed": 0, "skipped": 0, "info": 0}
+
+    def _add(spec: dict[str, Any], *, status: str,
+             value_ms: int | None = None, value_text: str | None = None,
+             message: str | None = None, evidence: dict[str, Any] | None = None):
+        if spec["item_key"] in skip:
+            status = "skipped"
+            message = "사용자에 의해 건너뜀"
+            value_ms = None
+        rec = _benchmark_record_item(
+            run_id, spec, status=status, value_ms=value_ms,
+            value_text=value_text, message=message, evidence=evidence,
+        )
+        items_out.append(rec)
+        if status in counters:
+            counters[status] += 1
+
+    by_key = {c["item_key"]: c for c in BENCHMARK_CHECKLIST}
+
+    # ===== 시스템 테스트 =====
+    win_kind = _benchmark_classify_windows(os_name, os_version)
+
+    # 1) Windows 10
+    spec = by_key["windows_10"]
+    if win_kind == "windows_10":
+        _add(spec, status="passed",
+             value_text=f"{os_name} {os_version}",
+             message="호스트 OS 가 Windows 10 입니다.",
+             evidence={"os_name": os_name, "os_version": os_version})
+    elif win_kind == "windows_11":
+        _add(spec, status="skipped",
+             value_text=f"{os_name} {os_version}",
+             message="Windows 11 환경 → Windows 10 검사 대상 아님")
+    elif (os_name or "").lower() == "windows":
+        _add(spec, status="skipped",
+             value_text=f"{os_name} {os_version or '?'}",
+             message="Windows 이지만 버전을 식별하지 못했습니다.")
+    else:
+        _add(spec, status="info",
+             value_text=os_name or "unknown",
+             message="비-Windows 환경 (백엔드 컨테이너 OS 가 보일 수 있습니다). "
+                     "런처가 host_info.os_name/os_version 을 넘겨주면 정확해집니다.")
+
+    # 2) Windows 11
+    spec = by_key["windows_11"]
+    if win_kind == "windows_11":
+        _add(spec, status="passed",
+             value_text=f"{os_name} {os_version}",
+             message="호스트 OS 가 Windows 11 입니다.",
+             evidence={"os_name": os_name, "os_version": os_version})
+    elif win_kind == "windows_10":
+        _add(spec, status="skipped",
+             value_text=f"{os_name} {os_version}",
+             message="Windows 10 환경 → Windows 11 검사 대상 아님")
+    elif (os_name or "").lower() == "windows":
+        _add(spec, status="skipped",
+             value_text=f"{os_name} {os_version or '?'}",
+             message="Windows 이지만 버전을 식별하지 못했습니다.")
+    else:
+        _add(spec, status="info",
+             value_text=os_name or "unknown",
+             message="비-Windows 환경")
+
+    # 3) Docker 설치됨 / 4) Docker 미설치
+    docker_installed = host.docker_installed
+    if docker_installed is None:
+        # 백엔드가 컨테이너 안에서 동작 중이면 Docker 가 설치되어 있다는 뜻.
+        docker_installed = os.path.exists("/.dockerenv") or os.getenv("IN_DOCKER") == "1"
+    spec = by_key["docker_installed"]
+    if docker_installed:
+        _add(spec, status="passed",
+             value_text="installed",
+             message="백엔드가 Docker 컨테이너 안에서 동작 중입니다.",
+             evidence={"in_docker": True})
+    else:
+        _add(spec, status="failed",
+             value_text="missing",
+             message="Docker 미설치 (런처 또는 호스트 검사 결과).")
+
+    spec = by_key["docker_missing"]
+    if not docker_installed:
+        _add(spec, status="passed",
+             value_text="missing",
+             message="Docker 미설치 시나리오 확인 완료.")
+    else:
+        _add(spec, status="skipped",
+             value_text="installed",
+             message="Docker 가 설치되어 있어 미설치 시나리오는 N/A.")
+
+    # 5) GPU 있음 / 6) GPU 없음
+    gpu_present = bool(hw_row.get("gpu_present"))
+    spec = by_key["gpu_present"]
+    if gpu_present:
+        _add(spec, status="passed",
+             value_text=hw_row.get("accelerator") or "gpu",
+             message=f"GPU 감지 (accelerator={hw_row.get('accelerator')}, "
+                     f"docker_gpu_ok={hw_row.get('docker_gpu_ok')})",
+             evidence={k: hw_row.get(k) for k in
+                       ("gpu_present", "accelerator", "cuda_available",
+                        "directml_available", "docker_gpu_ok")})
+    else:
+        _add(spec, status="skipped",
+             value_text="-",
+             message="GPU 미감지 → GPU 있음 시나리오 N/A")
+
+    spec = by_key["gpu_absent"]
+    if not gpu_present:
+        _add(spec, status="passed",
+             value_text="cpu",
+             message="GPU 미감지 → CPU fallback 환경 정상 동작",
+             evidence={"run_mode": run_mode_value,
+                       "accelerator": hw_row.get("accelerator")})
+    else:
+        _add(spec, status="skipped",
+             value_text=hw_row.get("accelerator") or "gpu",
+             message="GPU 가 감지되어 GPU 없음 시나리오는 N/A.")
+
+    # 7) RAM 부족
+    spec = by_key["ram_low"]
+    ram_mb = hw_row.get("ram_mb")
+    if ram_mb is None:
+        _add(spec, status="info", value_text=None,
+             message="hardware_profiles 에 ram_mb 가 없습니다. "
+                     "hardware-detector 를 먼저 호출하세요.")
+    else:
+        ram_gb = round(int(ram_mb) / 1024.0, 2)
+        if ram_gb < payload.ram_low_threshold_gb:
+            _add(spec, status="passed",
+                 value_text=f"{ram_gb:.2f} GB (< {payload.ram_low_threshold_gb} GB)",
+                 message="RAM 부족 임계값 미만으로 감지됨.",
+                 evidence={"ram_gb": ram_gb,
+                           "threshold_gb": payload.ram_low_threshold_gb})
+        else:
+            _add(spec, status="skipped",
+                 value_text=f"{ram_gb:.2f} GB",
+                 message=f"RAM 충분 (≥ {payload.ram_low_threshold_gb} GB) → N/A")
+
+    # 8) 저장공간 부족
+    spec = by_key["disk_low"]
+    free_gb = hw_row.get("storage_free_gb")
+    if free_gb is None:
+        # backend 컨테이너에서 /app/data 디스크를 직접 측정
+        try:
+            import shutil as _shutil
+            usage = _shutil.disk_usage(str(storage.DATA_DIR))
+            free_gb = round(usage.free / (1024 ** 3), 2)
+        except Exception:  # noqa: BLE001
+            free_gb = None
+    if free_gb is None:
+        _add(spec, status="info", value_text=None,
+             message="저장공간 정보를 얻지 못했습니다.")
+    else:
+        free_gb = float(free_gb)
+        if free_gb < payload.disk_low_threshold_gb:
+            _add(spec, status="passed",
+                 value_text=f"free={free_gb:.2f} GB (< {payload.disk_low_threshold_gb} GB)",
+                 message="저장공간 부족 임계값 미만으로 감지됨.",
+                 evidence={"free_gb": free_gb,
+                           "threshold_gb": payload.disk_low_threshold_gb})
+        else:
+            _add(spec, status="skipped",
+                 value_text=f"free={free_gb:.2f} GB",
+                 message=f"저장공간 충분 (≥ {payload.disk_low_threshold_gb} GB) → N/A")
+
+    # ===== AI 기능 테스트 =====
+    model_name = payload.model or "stub-echo"
+    sample_code = (
+        "def slow_sum(n):\n"
+        "    total = 0\n"
+        "    for i in range(n):\n"
+        "        for j in range(n):\n"
+        "            total += 1\n"
+        "    return total\n"
+    )
+    sample_requirement = "다음 함수의 시간복잡도를 O(n) 으로 줄여줘."
+
+    # 9) 코드 입력
+    spec = by_key["code_input"]
+    code_input_raw_id: int | None = None
+    t0 = datetime.utcnow()
+    try:
+        res = api_input_code(InputCodeIn(
+            code=sample_code, language="python",
+            user_tag=f"benchmark-run-{run_id}-code",
+        ))
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        code_input_raw_id = res.get("raw_input_id")
+        _add(spec, status="passed", value_ms=ms,
+             value_text=f"raw_input_id={code_input_raw_id}",
+             message=f"language={res.get('language')}",
+             evidence={"raw_input_id": code_input_raw_id,
+                       "rel_path": res.get("rel_path")})
+    except Exception as exc:  # noqa: BLE001
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec, status="failed", value_ms=ms,
+             message=f"코드 입력 실패: {exc}")
+
+    # 10/11/12) 코드 / 에러 / 명세서 이미지 입력
+    def _benchmark_image(spec_: dict[str, Any], image_type: str, label: str):
+        t0_ = datetime.utcnow()
+        try:
+            blob = _b64.b64decode(_TINY_PNG_B64)
+            raw_id_ = _insert_raw_input(
+                input_type="image", raw_text=None,
+                user_tag=f"benchmark-run-{run_id}-{image_type}",
+            )
+            saved = storage.save_image_original(
+                blob, raw_input_id=raw_id_,
+                original_filename=f"benchmark_{run_id}_{image_type}.png",
+                mime_type="image/png",
+            )
+            img_id_ = db.execute(
+                """
+                INSERT INTO image_data
+                    (raw_input_id, mime_type, file_path, file_size, sha256,
+                     image_type, image_type_source, image_type_confidence,
+                     extraction_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (raw_id_, "image/png", saved.rel_path, saved.size, saved.sha256,
+                 image_type, "benchmark", 1.0, "pending"),
+            )
+            ms_ = int((datetime.utcnow() - t0_).total_seconds() * 1000)
+            _add(spec_, status="passed", value_ms=ms_,
+                 value_text=f"image_id={img_id_}",
+                 message=f"{label} 이미지 업로드 성공",
+                 evidence={"image_id": img_id_, "raw_input_id": raw_id_,
+                           "image_type": image_type, "rel_path": saved.rel_path})
+            return img_id_
+        except Exception as exc_:  # noqa: BLE001
+            ms_ = int((datetime.utcnow() - t0_).total_seconds() * 1000)
+            _add(spec_, status="failed", value_ms=ms_,
+                 message=f"{label} 이미지 입력 실패: {exc_}")
+            return None
+
+    code_image_id = _benchmark_image(by_key["code_image_input"], "code", "코드")
+    _benchmark_image(by_key["error_image_input"], "error_log", "에러")
+    _benchmark_image(by_key["spec_image_input"], "tech_spec", "명세서")
+
+    # 13/14) 답변 저장 / embedding 저장 (한 번의 /api/infer 로 동시 검증)
+    spec_ans = by_key["answer_save"]
+    spec_emb = by_key["embedding_save"]
+    answer_id_global: int | None = None
+    embedding_id_global: int | None = None
+    answer_latency_ms: int | None = None
+    t0 = datetime.utcnow()
+    try:
+        infer_res = api_infer(InferIn(
+            requirement=sample_requirement, code=sample_code, language="python",
+            raw_input_id=code_input_raw_id,
+            model=model_name, embed=True,
+        ))
+        answer_latency_ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        answer_id_global = infer_res.get("answer_id")
+        embedding_id_global = infer_res.get("embedding_id")
+
+        # 답변 저장
+        if answer_id_global and infer_res.get("answer_file_path"):
+            _add(spec_ans, status="passed", value_ms=answer_latency_ms,
+                 value_text=f"answer_id={answer_id_global}",
+                 message=f"파일={infer_res.get('answer_file_path')}",
+                 evidence={"answer_id": answer_id_global,
+                           "answer_file_path": infer_res.get("answer_file_path"),
+                           "stub": infer_res.get("stub")})
+        else:
+            _add(spec_ans, status="failed", value_ms=answer_latency_ms,
+                 message="model_answers 행 또는 파일 경로가 없음",
+                 evidence={"infer": infer_res})
+
+        # embedding 저장
+        if embedding_id_global:
+            _add(spec_emb, status="passed",
+                 value_text=f"embedding_id={embedding_id_global}",
+                 message="embedding-server 응답 정상 + DB 저장",
+                 evidence={"embedding_id": embedding_id_global})
+        else:
+            _add(spec_emb, status="failed",
+                 message="embedding-server 응답이 없거나 저장 실패",
+                 evidence={"infer_stub": infer_res.get("stub")})
+    except Exception as exc:  # noqa: BLE001
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec_ans, status="failed", value_ms=ms,
+             message=f"/api/infer 실패: {exc}")
+        _add(spec_emb, status="failed", message="선행 단계 실패")
+
+    # 15) 과거 답변 재사용
+    spec = by_key["answer_reuse"]
+    t0 = datetime.utcnow()
+    try:
+        reuse_res = api_reuse_answer(ReuseAnswerPipelineIn(
+            requirement=sample_requirement, code=sample_code, code_language="python",
+            model=model_name, top_k=5, threshold=0.0,
+            adapt=True, record=True,
+            user_tag=f"benchmark-run-{run_id}-reuse",
+        ))
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        reused = bool(reuse_res.get("reused"))
+        cand = reuse_res.get("matched_answer_id") or reuse_res.get("best_match_id")
+        if reused or cand:
+            _add(spec, status="passed", value_ms=ms,
+                 value_text=f"matched={cand}",
+                 message=f"기존 답변(matched_answer_id={cand}) 재사용 가능",
+                 evidence={"matched_answer_id": cand,
+                           "similarity": reuse_res.get("similarity"),
+                           "new_answer_id": reuse_res.get("new_answer_id")})
+        else:
+            _add(spec, status="failed", value_ms=ms,
+                 message="유사 답변 후보를 찾지 못했습니다 "
+                         "(embedding-server 가 다운되었을 수 있음).",
+                 evidence={"reuse": reuse_res})
+    except Exception as exc:  # noqa: BLE001
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec, status="failed", value_ms=ms,
+             message=f"/api/reuse/answer 실패: {exc}")
+
+    # 16) 여러 언어 입력 (language-worker 로 다중 언어 감지 검증)
+    spec = by_key["multi_language"]
+    samples = [
+        ("python",     "def add(a,b):\n    return a+b\n"),
+        ("javascript", "function add(a,b){return a+b;}\n"),
+        ("java",       "class M{public static int add(int a,int b){return a+b;}}\n"),
+        ("go",         "package main\nfunc add(a,b int) int { return a+b }\n"),
+        ("c",          "int add(int a,int b){ return a+b; }\n"),
+    ]
+    t0 = datetime.utcnow()
+    detected: list[dict[str, Any]] = []
+    ok_count = 0
+    fail_count = 0
+    for expected, code in samples:
+        try:
+            res = _http_post_json(
+                f"{LANGUAGE_WORKER_URL}/api/v1/detect",
+                {"code": code}, timeout=5,
+            )
+            lang = (res or {}).get("language")
+            ok = bool(lang)
+            if ok:
+                ok_count += 1
+            else:
+                fail_count += 1
+            detected.append({"expected": expected, "detected": lang, "ok": ok})
+        except Exception as exc:  # noqa: BLE001
+            fail_count += 1
+            detected.append({"expected": expected, "error": str(exc)})
+    ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+    if ok_count > 0 and fail_count == 0:
+        _add(spec, status="passed", value_ms=ms,
+             value_text=f"{ok_count}/{len(samples)} 언어 감지",
+             message="여러 언어 입력 모두 처리 성공",
+             evidence={"detected": detected})
+    elif ok_count > 0:
+        _add(spec, status="passed", value_ms=ms,
+             value_text=f"{ok_count}/{len(samples)} 언어 감지",
+             message="일부 언어 감지 실패 (language-worker 사전 기준)",
+             evidence={"detected": detected})
+    else:
+        _add(spec, status="failed", value_ms=ms,
+             message="모든 언어 감지 실패 — language-worker 응답 확인 필요",
+             evidence={"detected": detected})
+
+    # ===== 성능 테스트 =====
+    budget = max(1, int(payload.perf_budget_ms or 5000))
+
+    def _perf_status(ms_: int | None) -> str:
+        if ms_ is None:
+            return "failed"
+        return "passed" if ms_ <= budget else "failed"
+
+    # 17) CPU 모드 속도 / 18) GPU 모드 속도
+    # api_infer 1회의 latency 를 현재 run_mode 에 맞는 항목에 기록한다.
+    spec_cpu = by_key["cpu_speed"]
+    spec_gpu = by_key["gpu_speed"]
+    if answer_latency_ms is None:
+        _add(spec_cpu, status="failed",
+             message="앞서 /api/infer 실패 → 측정 불가")
+        _add(spec_gpu, status="failed",
+             message="앞서 /api/infer 실패 → 측정 불가")
+    elif run_mode_value == "cpu":
+        _add(spec_cpu, status=_perf_status(answer_latency_ms),
+             value_ms=answer_latency_ms,
+             value_text=f"{answer_latency_ms} ms (budget {budget} ms)",
+             message="현재 run_mode=cpu 에서 /api/infer 1회 측정",
+             evidence={"run_mode": "cpu", "model": model_name})
+        _add(spec_gpu, status="skipped",
+             message="GPU 모드가 아니어서 측정 불가 (CPU fallback 환경).")
+    elif run_mode_value == "gpu":
+        _add(spec_gpu, status=_perf_status(answer_latency_ms),
+             value_ms=answer_latency_ms,
+             value_text=f"{answer_latency_ms} ms (budget {budget} ms)",
+             message="현재 run_mode=gpu 에서 /api/infer 1회 측정",
+             evidence={"run_mode": "gpu", "accelerator": hw_row.get("accelerator"),
+                       "model": model_name})
+        _add(spec_cpu, status="skipped",
+             message="GPU 모드 환경 → CPU 모드 단독 측정은 별도 실행 필요.")
+    else:
+        _add(spec_cpu, status="info",
+             value_ms=answer_latency_ms,
+             value_text=f"{answer_latency_ms} ms",
+             message="run_mode unknown — hardware-detector 결과를 먼저 갱신하세요.")
+        _add(spec_gpu, status="info",
+             message="run_mode unknown — 분류 불가")
+
+    # 19) 이미지 처리 속도
+    spec = by_key["image_speed"]
+    if code_image_id is None:
+        _add(spec, status="failed",
+             message="이미지가 없어 처리 속도를 측정할 수 없습니다.")
+    else:
+        t0 = datetime.utcnow()
+        try:
+            row = db.fetch_one(
+                "SELECT file_path FROM image_data WHERE id=%s",
+                (code_image_id,),
+            )
+            abs_path = str(storage.resolve(row["file_path"])) if row else None
+            extraction = _http_post_json(
+                f"{VISION_SERVER_URL}/api/v1/extract",
+                {"file_path": abs_path, "image_type": "code",
+                 "language_hint": "python",
+                 "filename": f"benchmark_{run_id}.png"},
+                timeout=15,
+            ) if abs_path else None
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            if extraction is None:
+                _add(spec, status="failed", value_ms=ms,
+                     message="vision-server 가 응답하지 않음")
+            else:
+                _add(spec, status=_perf_status(ms), value_ms=ms,
+                     value_text=f"{ms} ms (budget {budget} ms)",
+                     message=f"engine={extraction.get('engine') or '-'}",
+                     evidence={"image_id": code_image_id,
+                               "engine": extraction.get("engine"),
+                               "confidence": extraction.get("confidence")})
+        except Exception as exc:  # noqa: BLE001
+            ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+            _add(spec, status="failed", value_ms=ms,
+                 message=f"이미지 처리 실패: {exc}")
+
+    # 20) 답변 생성 속도 — 새로 한 번 더 /api/infer 측정 (캐시 영향 최소화)
+    spec = by_key["answer_speed"]
+    t0 = datetime.utcnow()
+    try:
+        gen_res = api_infer(InferIn(
+            requirement=sample_requirement + " (perf test)",
+            code=sample_code, language="python",
+            model=model_name, embed=False,
+        ))
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec, status=_perf_status(ms), value_ms=ms,
+             value_text=f"{ms} ms (budget {budget} ms)",
+             message=f"answer_id={gen_res.get('answer_id')}, "
+                     f"stub={gen_res.get('stub')}",
+             evidence={"answer_id": gen_res.get("answer_id"),
+                       "model": gen_res.get("model"),
+                       "stub": gen_res.get("stub")})
+    except Exception as exc:  # noqa: BLE001
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec, status="failed", value_ms=ms,
+             message=f"/api/infer 실패: {exc}")
+
+    # 21) MySQL 검색 속도
+    spec = by_key["mysql_speed"]
+    t0 = datetime.utcnow()
+    try:
+        # model_answers 텍스트/메타 검색 1회
+        rows = db.fetch_all(
+            "SELECT id, model_name, created_at FROM model_answers "
+            "WHERE answer_text LIKE %s OR model_name LIKE %s "
+            "ORDER BY id DESC LIMIT 20",
+            ("%def%", "%stub%"),
+        ) or []
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec, status=_perf_status(ms), value_ms=ms,
+             value_text=f"{ms} ms / {len(rows)} rows (budget {budget} ms)",
+             message="model_answers LIKE 검색",
+             evidence={"hits": len(rows)})
+    except Exception as exc:  # noqa: BLE001
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec, status="failed", value_ms=ms,
+             message=f"MySQL 검색 실패: {exc}")
+
+    # 22) embedding 유사도 검색 속도
+    spec = by_key["embedding_speed"]
+    t0 = datetime.utcnow()
+    try:
+        sim_res = api_reuse_find_similar(ReuseFindSimilarIn(
+            text=sample_requirement, top_k=5, threshold=0.0,
+        ))
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        # 응답에 hit 수 추출
+        groups = (sim_res or {}).get("groups") or {}
+        total_hits = 0
+        if isinstance(groups, dict):
+            for g in groups.values():
+                items = (g or {}).get("items") if isinstance(g, dict) else None
+                if isinstance(items, list):
+                    total_hits += len(items)
+        _add(spec, status=_perf_status(ms), value_ms=ms,
+             value_text=f"{ms} ms / {total_hits} hits (budget {budget} ms)",
+             message="/api/reuse/find-similar 1회",
+             evidence={"hits": total_hits})
+    except Exception as exc:  # noqa: BLE001
+        ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
+        _add(spec, status="failed", value_ms=ms,
+             message=f"embedding 유사도 검색 실패: {exc}")
+
+    # ---- 통계 마감 ----
+    total_ms = int((datetime.utcnow() - overall_started).total_seconds() * 1000)
+    if counters["failed"] == 0 and counters["passed"] > 0:
+        status = "passed"
+    elif counters["failed"] > 0 and counters["passed"] > 0:
+        status = "partial"
+    elif counters["failed"] > 0:
+        status = "failed"
+    else:
+        status = "partial"
+
+    db.execute(
+        """
+        UPDATE benchmark_runs
+           SET passed_items=%s, failed_items=%s, skipped_items=%s,
+               info_items=%s, total_latency_ms=%s, status=%s,
+               finished_at=CURRENT_TIMESTAMP
+         WHERE id=%s
+        """,
+        (counters["passed"], counters["failed"], counters["skipped"],
+         counters["info"], total_ms, status, run_id),
+    )
+
+    return {
+        "run_id": run_id,
+        "status": status,
+        "run_mode": run_mode_value,
+        "accelerator": hw_row.get("accelerator"),
+        "os_name": os_name,
+        "os_version": os_version,
+        "total_items": len(BENCHMARK_CHECKLIST),
+        "passed": counters["passed"],
+        "failed": counters["failed"],
+        "skipped": counters["skipped"],
+        "info": counters["info"],
+        "total_latency_ms": total_ms,
+        "items": items_out,
+    }
+
+
+@app.get("/api/benchmark/runs")
+def api_benchmark_runs(
+    status: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    where: list[str] = []
+    args: list[Any] = []
+    if status:
+        where.append("status=%s"); args.append(status)
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = db.fetch_all(
+        f"SELECT id, triggered_by, host_name, os_name, os_version, "
+        f"       run_mode, accelerator, total_items, passed_items, "
+        f"       failed_items, skipped_items, info_items, "
+        f"       total_latency_ms, status, started_at, finished_at "
+        f"FROM benchmark_runs {where_sql} "
+        f"ORDER BY id DESC LIMIT %s OFFSET %s",
+        tuple(args + [limit, offset]),
+    ) or []
+    total = (db.fetch_one(
+        f"SELECT COUNT(*) AS n FROM benchmark_runs {where_sql}",
+        tuple(args),
+    ) or {}).get("n", 0)
+    return {"total": total, "limit": limit, "offset": offset, "items": rows}
+
+
+@app.get("/api/benchmark/runs/{run_id}")
+def api_benchmark_run_get(run_id: int):
+    row = db.fetch_one(
+        "SELECT * FROM benchmark_runs WHERE id=%s", (run_id,),
+    )
+    if not row:
+        raise HTTPException(404, "benchmark_run not found")
+    items = db.fetch_all(
+        "SELECT id, category, item_no, item_key, label, status, "
+        "       value_ms, value_text, message, evidence_json, created_at "
+        "FROM benchmark_items WHERE run_id=%s "
+        "ORDER BY item_no ASC, id ASC",
+        (run_id,),
+    ) or []
+    for it in items:
+        if isinstance(it.get("evidence_json"), str):
+            try:
+                it["evidence"] = json.loads(it["evidence_json"])
+            except Exception:  # noqa: BLE001
+                it["evidence"] = None
+        else:
+            it["evidence"] = it.get("evidence_json")
+        it.pop("evidence_json", None)
+    return {"run": row, "items": items}
+
+

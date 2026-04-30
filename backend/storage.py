@@ -85,6 +85,10 @@ _CATEGORIES: dict[str, str] = {
     "llm_checkpoints":        "llm_training/checkpoints",
     "llm_runs":               "llm_training/runs",
     "llm_inference":          "llm_training/inference",
+    # Step 16: 명세서 기반 SW 생성 엔진
+    "spec_engine_input":        "spec_engine/input",
+    "spec_engine_intermediate": "spec_engine/intermediate",
+    "spec_engine_project":      "spec_engine/project",
 }
 
 # Step 11: stage_key → 카테고리 매핑
@@ -555,6 +559,71 @@ def save_llm_inference_log(
         "llm_inference",
         _compose_filename(endpoint, ".json", owner_id=inference_id),
         payload,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 8) Step 16: 명세서 기반 SW 생성 엔진 산출물
+# ---------------------------------------------------------------------------
+def save_spec_input_text(
+    text: str,
+    *,
+    run_hint: str | None = None,
+    owner_id: int | str | None = None,
+) -> SavedFile:
+    """입력 명세서 원문(또는 OCR 텍스트)을 보존."""
+    return _write_text(
+        "spec_engine_input",
+        _compose_filename(run_hint or "spec", ".md", owner_id=owner_id),
+        text,
+    )
+
+
+def save_spec_intermediate_json(
+    payload: dict[str, Any],
+    *,
+    run_id: int | None = None,
+    project_name: str | None = None,
+) -> SavedFile:
+    """사진의 ``project_name + features + screens + apis + database_tables + business_rules``
+    중간 JSON 을 그대로 디스크에 보존."""
+    stem = _sanitize_stem(project_name or "intermediate", "intermediate")
+    return _write_json(
+        "spec_engine_intermediate",
+        _compose_filename(stem, ".json", owner_id=run_id),
+        payload,
+    )
+
+
+def save_spec_project_file(
+    code_text: str,
+    *,
+    run_id: int,
+    project_name: str | None,
+    rel_path: str,
+) -> SavedFile:
+    """엔진이 생성한 프로젝트 파일을 ``spec_engine/project/<run>_<project>/<rel_path>`` 에 저장.
+
+    rel_path 는 프로젝트 루트 기준 상대 경로(예: ``app/main.py``).
+    """
+    safe_rel = rel_path.replace("\\", "/").lstrip("/")
+    if ".." in safe_rel.split("/"):
+        raise ValueError(f"invalid rel_path: {rel_path!r}")
+    proj_stem = f"run-{run_id}_{_sanitize_stem(project_name or 'project', 'project')}"
+    target_dir = category_path("spec_engine_project") / proj_stem / Path(safe_rel).parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+    abs_path = (category_path("spec_engine_project") / proj_stem / safe_rel).resolve()
+    # 위 resolve() 결과가 spec_engine_project 외부로 새지 않도록 마지막 검증
+    base = category_path("spec_engine_project").resolve()
+    if base not in abs_path.parents and abs_path != base:
+        raise ValueError(f"path escapes spec_engine_project: {rel_path!r}")
+    blob = code_text.encode("utf-8")
+    abs_path.write_bytes(blob)
+    return SavedFile(
+        rel_path=to_relative(abs_path),
+        abs_path=abs_path,
+        size=len(blob),
+        sha256=_sha256_bytes(blob),
     )
 
 
