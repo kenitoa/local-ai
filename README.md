@@ -100,3 +100,91 @@ docker compose up -d
 - Step 3: 모델 다운로드/관리 스크립트
 - Step 4: 하드웨어 감지 → 모델 자동 선택 로직
 - Step 5: 런처 / 배포 패키징
+
+---
+
+## 6. Step 5 — 로컬 파일 저장 구조
+
+DB(MySQL)에는 **메타데이터만** 저장하고, 실제 파일은 호스트 `./data/`
+(컨테이너 `/app/data`) 하위에 카테고리별로 저장합니다.
+
+### 6.1 디렉토리 구조
+
+```
+data/
+├─ image_data/
+│  ├─ original/         # 사용자가 업로드한 이미지 원본
+│  ├─ extracted_text/   # 이미지에서 추출한 일반 텍스트
+│  ├─ extracted_code/   # 이미지에서 추출한 코드
+│  ├─ extracted_spec/   # 이미지에서 추출한 요구사항/스펙
+│  └─ metadata/         # EXIF/추출 결과 메타 JSON
+├─ code_data/
+│  ├─ original/         # 사용자가 입력/업로드한 원본 코드
+│  ├─ generated/        # 모델이 생성한 코드
+│  ├─ optimized/        # 최적화된 코드
+│  └─ diff/             # generated → optimized 의 unified diff
+├─ model_answers/       # LLM 답변 원문(.md)
+├─ embeddings/          # 임베딩 벡터(.npy / .json)
+└─ logs/                # 백엔드 자체 작업 로그
+```
+
+### 6.2 DB ↔ 파일 경로 연결
+
+`mysql/init/03_step5_paths.sql` 마이그레이션이 다음 컬럼을 추가합니다.
+모두 `DATA_DIR` 기준 **상대 경로**(슬래시 표기)를 저장합니다.
+
+| 테이블 | 추가된 경로 컬럼 |
+|---|---|
+| `image_data` | `text_file_path`, `code_file_path`, `spec_file_path`, `metadata_file_path` |
+| `extracted_code` | `file_path`, `file_size`, `sha256` |
+| `raw_inputs` | `source_file_path` |
+| `model_answers` | `answer_file_path`, `file_size`, `sha256` |
+| `generated_code` | `file_path`, `file_size`, `sha256` |
+| `optimized_code` | `file_path`, `diff_file_path`, `file_size`, `sha256` |
+| `embeddings` | `vector_file_path`, `file_size`, `sha256` (기존 `vector_json` 은 NULL 허용) |
+
+### 6.3 파일 저장 유틸리티
+
+`backend/storage.py` 모듈이 모든 카테고리에 대해 표준 함수를 제공합니다.
+
+- `save_image_original(data, raw_input_id=..., original_filename=..., mime_type=...)`
+- `save_image_extracted_text(text, image_id=...)`
+- `save_image_extracted_code(code, image_id=..., language=...)`
+- `save_image_extracted_spec(text, image_id=...)`
+- `save_image_metadata(meta_dict, image_id=...)`
+- `save_original_code(code, raw_input_id=..., language=..., file_name=...)`
+- `save_generated_code(code, answer_id=..., language=..., file_name=...)`
+- `save_optimized_code(code, generated_code_id=..., language=..., file_name=...)`
+- `save_code_diff(diff_text, generated_code_id=..., optimized_code_id=...)`
+- `save_model_answer(text, answer_id=..., model_name=...)`
+- `save_embedding(vector, target_type=..., target_id=..., model_name=...)`
+
+각 함수는 `SavedFile` 데이터클래스(`rel_path`, `abs_path`, `size`, `sha256`)를
+반환하며, `rel_path` 를 그대로 DB `*_file_path` 컬럼에 저장합니다.
+파일명은 `<UTC타임스탬프>_<owner_id>_<sanitized_stem>_<short-uuid>.<ext>` 형식이라
+충돌이 발생하지 않습니다.
+
+### 6.4 백엔드 API
+
+`backend/app.py` 가 다음 엔드포인트를 노출합니다 (`http://localhost:8000`).
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| POST | `/api/v1/uploads/image` | 이미지 원본 업로드 → `raw_inputs` + `image_data` 생성 |
+| POST | `/api/v1/images/{image_id}/extracted` | 이미지 추출 텍스트/코드/스펙/메타 저장 |
+| POST | `/api/v1/model-answers` | LLM 답변 저장(텍스트 + .md 파일) |
+| POST | `/api/v1/generated-code` | 생성 코드 저장 |
+| POST | `/api/v1/optimized-code` | 최적화 코드 + diff 자동 생성/저장 |
+| POST | `/api/v1/embeddings` | 임베딩 벡터를 .npy 로 저장 |
+| GET  | `/api/v1/storage/info` | 카테고리별 파일 개수 / 경로 점검 |
+| GET  | `/health` | 서비스 + MySQL 연결 상태 |
+
+### 6.5 체크리스트
+
+- [x] 이미지 원본 저장 (`data/image_data/original/`)
+- [x] 이미지 추출 텍스트 저장 (`data/image_data/extracted_text/`)
+- [x] 이미지 추출 코드 저장 (`data/image_data/extracted_code/`)
+- [x] 생성 코드 저장 (`data/code_data/generated/`)
+- [x] 최적화 코드 저장 (`data/code_data/optimized/` + `diff/`)
+- [x] 모델 답변 저장 (`data/model_answers/`)
+- [x] DB record 와 파일 경로 연결 (`*_file_path` 컬럼 + `mysql/init/03_step5_paths.sql`)

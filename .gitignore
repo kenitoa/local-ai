@@ -4,8 +4,10 @@
 !.env.example
 
 # 데이터 / 모델 / 로그 (대용량, 민감)
-data/*
-!data/.gitkeep
+# 사용자가 만든 산출물은 무시하되, 표준 디렉토리 구조(.gitkeep)는 유지한다.
+data/**/*
+!data/**/
+!data/**/.gitkeep
 models/*
 !models/.gitkeep
 logs/**/*
