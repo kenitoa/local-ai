@@ -118,7 +118,8 @@ services:
     environment:
       <<: *common-env
       MODEL_SERVER_DEVICE: ${MODEL_SERVER_DEVICE:-auto}
-      DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL}
+      LOCAL_CHECKPOINT: ${LOCAL_CHECKPOINT:-self/cold-start}
+      BOOTSTRAP_BASE_ID: ${BOOTSTRAP_BASE_ID:-Qwen/Qwen2.5-Coder-1.5B}
     ports:
       - "${MODEL_SERVER_PORT:-8001}:8001"
     volumes:

@@ -24,7 +24,7 @@ import ast
 import re
 from typing import Any, Iterable
 
-# 사진의 9가지 최적화 유형 키 (mysql/init/11_step15_optimize_engine.sql 와 1:1)
+# 사진의 9가지 최적화 유형 키 (mysql/init/11_optimize_engine.sql 와 1:1)
 OPTIMIZATION_TYPE_KEYS: tuple[str, ...] = (
     "syntax_error", "typo", "dead_code", "loop", "memory",
     "library", "algorithm", "readability", "speed",

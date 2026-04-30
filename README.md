@@ -138,7 +138,7 @@ Detector / Language Worker / Vision Server / LLM Server / Embedding Server`)을
 ### 저장 위치
 
 - MySQL: `integration_runs`, `integration_steps`
-  (`mysql/init/13_step17_integration.sql` 마이그레이션으로 자동 생성)
+  (`mysql/init/13_integration.sql` 마이그레이션으로 자동 생성)
 - Step 4: 하드웨어 감지 → 모델 자동 선택 로직
 - Step 5: 런처 / 배포 패키징
 
@@ -171,7 +171,7 @@ data/
 
 ### 6.2 DB ↔ 파일 경로 연결
 
-`mysql/init/03_step5_paths.sql` 마이그레이션이 다음 컬럼을 추가합니다.
+`mysql/init/03_paths.sql` 마이그레이션이 다음 컬럼을 추가합니다.
 모두 `DATA_DIR` 기준 **상대 경로**(슬래시 표기)를 저장합니다.
 
 | 테이블 | 추가된 경로 컬럼 |
@@ -228,7 +228,7 @@ data/
 - [x] 생성 코드 저장 (`data/code_data/generated/`)
 - [x] 최적화 코드 저장 (`data/code_data/optimized/` + `diff/`)
 - [x] 모델 답변 저장 (`data/model_answers/`)
-- [x] DB record 와 파일 경로 연결 (`*_file_path` 컬럼 + `mysql/init/03_step5_paths.sql`)
+- [x] DB record 와 파일 경로 연결 (`*_file_path` 컬럼 + `mysql/init/03_paths.sql`)
 
 
 ---
@@ -354,7 +354,7 @@ LLM 입력으로 전달
 
 ### 11.5 추가된 데이터베이스 스키마
 
-마이그레이션 `mysql/init/07_step11_vlm_training.sql` 가 생성한다.
+마이그레이션 `mysql/init/07_vlm_training.sql` 가 생성한다.
 
 | 테이블 | 용도 |
 |---|---|
@@ -475,7 +475,7 @@ LLM 이 기존 답변을 현재 요구사항에 맞게 수정 (adapt)
 새 답변 저장 + reuse_count++ + answer_reuse_logs 기록
 ```
 
-### 14.2 마이그레이션 (`mysql/init/10_step14_reuse.sql`)
+### 14.2 마이그레이션 (`mysql/init/10_reuse.sql`)
 
 | 테이블 | 추가 컬럼 |
 |---|---|
@@ -513,7 +513,7 @@ LLM 이 기존 답변을 현재 요구사항에 맞게 수정 (adapt)
 
 ### 12.3 �߰��� �����ͺ��̽� ��Ű��
 
-���̱׷��̼� `mysql/init/08_step12_llm_training.sql` �� ���� ���̺��� �����Ѵ�.
+���̱׷��̼� `mysql/init/08_llm_training.sql` �� ���� ���̺��� �����Ѵ�.
 
 | ���̺� | �뵵 |
 |---|---|
@@ -665,7 +665,7 @@ LLM 최적화      (model-server, 규칙 분석 결과를 prompt 에 주입)
 
 ### 15.3 추가된 데이터베이스 스키마
 
-`mysql/init/11_step15_optimize_engine.sql`
+`mysql/init/11_optimize_engine.sql`
 
 | 테이블 | 용도 |
 |---|---|
@@ -748,7 +748,7 @@ curl http://localhost:8000/api/optimize/runs?limit=10
 
 ### 19.2 추가된 데이터베이스 스키마
 
-마이그레이션 `mysql/init/14_step19_benchmark.sql` :
+마이그레이션 `mysql/init/14_benchmark.sql` :
 
 | 테이블 | 용도 |
 |---|---|

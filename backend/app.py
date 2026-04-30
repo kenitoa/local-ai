@@ -23,6 +23,23 @@ from pydantic import BaseModel
 import db
 import storage
 import optimizer
+import model_planner
+
+
+def _default_local_checkpoint() -> str:
+    """Return the default local-checkpoint label for self-trained models.
+
+    This project does NOT reference external pretrained model names here.
+    After cold-start the label is ``self/cold-start``; subsequent fine-tune
+    runs use labels like ``self/run-<id>``. ``DEFAULT_LLM_MODEL`` is kept
+    as a backward-compat fallback only.
+    """
+    return (
+        os.getenv("LOCAL_CHECKPOINT")
+        or os.getenv("DEFAULT_LLM_MODEL")
+        or "self/cold-start"
+    )
+
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "backend")
 LOG_DIR = "/app/logs"
@@ -512,6 +529,431 @@ def hardware_current():
     )
     if not row:
         raise HTTPException(404, "no hardware profile recorded yet")
+    return row
+
+
+# ---------------------------------------------------------------------------
+# 자체 학습 plan (hardware → 학습/추론 예산)
+#   - GET  /api/v1/hardware/plan          : 현재 프로필로 plan 계산만
+#   - POST /api/v1/hardware/plan/apply    : 계산 + model_plans 저장
+#   - GET  /api/v1/hardware/plan/current  : 가장 최근 저장된 plan
+#   외부 모델 카탈로그를 두지 않는다. 콜드스타트 베이스 1개만 외부 다운로드 허용.
+# ---------------------------------------------------------------------------
+def _latest_hardware_profile() -> dict[str, Any]:
+    row = db.fetch_one(
+        """
+        SELECT id, host_name, os_name, os_version, cpu_model, cpu_cores, ram_mb,
+               gpu_present, gpu_vendor, gpu_model, gpu_vram_mb, accelerator,
+               cuda_available, directml_available, docker_gpu_ok,
+               storage_total_gb, storage_free_gb, run_mode, fingerprint,
+               detected_at
+        FROM hardware_profiles
+        ORDER BY COALESCE(detected_at, created_at) DESC, id DESC
+        LIMIT 1
+        """
+    )
+    if not row:
+        raise HTTPException(404, "no hardware profile recorded yet")
+    return row
+
+
+@app.get("/api/v1/hardware/plan")
+def hardware_plan():
+    """현재 기기 사양으로 학습/추론 예산 plan 을 *계산만* 해서 반환."""
+    return model_planner.plan_all(_latest_hardware_profile())
+
+
+@app.post("/api/v1/hardware/plan/apply")
+def hardware_plan_apply():
+    """계산한 plan 을 ``model_plans`` 에 영속화하고 plan_id 와 함께 반환."""
+    profile = _latest_hardware_profile()
+    plan = model_planner.plan_all(profile)
+    boot = plan["bootstrap"]
+    train = plan["train"]
+    infer = plan["infer"]
+    policy = (
+        "cold-start-only"
+        if boot.get("policy", {}).get("allow_cold_start_only")
+        else "none"
+    )
+    new_id = db.execute(
+        """
+        INSERT INTO model_plans
+            (hardware_profile_id, fingerprint, schema_version,
+             bootstrap_base_id, bootstrap_params_b, bootstrap_license,
+             external_download_policy,
+             train_trainable, train_method, train_device, train_precision,
+             train_lora_rank, train_lora_alpha, train_lora_dropout,
+             train_per_dev_batch, train_grad_accum_steps, train_effective_batch,
+             train_seq_len, train_grad_checkpointing, train_optimizer,
+             train_n_threads, train_max_params_b, train_disabled_reason,
+             infer_device, infer_n_ctx, infer_n_batch, infer_n_threads,
+             infer_n_gpu_layers, infer_max_concurrency,
+             summary, raw_json)
+        VALUES (%s, %s, %s,
+                %s, %s, %s,
+                %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s,
+                %s, %s)
+        """,
+        (
+            profile.get("id"), profile.get("fingerprint"), plan["schema_version"],
+            boot["id"], boot["params_b"], boot.get("license"),
+            policy,
+            int(bool(train.get("trainable"))), train.get("method"),
+            train.get("device"), train.get("precision"),
+            int(train.get("lora_rank") or 0), int(train.get("lora_alpha") or 0),
+            float(train.get("lora_dropout") or 0.0),
+            int(train.get("per_device_batch_size") or 1),
+            int(train.get("grad_accum_steps") or 1),
+            int(train.get("effective_batch_size") or 1),
+            int(train.get("seq_len") or 512),
+            int(bool(train.get("gradient_checkpointing"))),
+            train.get("optimizer"),
+            int(train.get("n_threads") or 2),
+            float(train.get("max_params_b") or 1.5),
+            train.get("reason"),
+            infer["device"], infer["n_ctx"], infer["n_batch"], infer["n_threads"],
+            infer["n_gpu_layers"], infer["max_concurrency"],
+            plan["summary"], json.dumps(plan, ensure_ascii=False),
+        ),
+    )
+    return {"stored": True, "plan_id": new_id, **plan}
+
+
+@app.get("/api/v1/hardware/plan/current")
+def hardware_plan_current():
+    """가장 최근에 저장된 model_plans 행을 그대로 반환."""
+    row = db.fetch_one("SELECT * FROM model_plans ORDER BY id DESC LIMIT 1")
+    if not row:
+        raise HTTPException(
+            404,
+            "no model plan applied yet (call POST /api/v1/hardware/plan/apply)",
+        )
+    return row
+
+
+# ---------------------------------------------------------------------------
+# 콜드스타트 베이스 상태 조회
+#   models/local/state.json 을 그대로 반환. 다운로드는 backend 가 수행하지 않고
+#   ``scripts/bootstrap_cold_start.py`` 가 담당한다 (외부 다운로드 책임 분리).
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/bootstrap/status")
+def bootstrap_status():
+    state_path = os.path.join(
+        os.environ.get("MODELS_DIR", "/app/models"), "local", "state.json"
+    )
+    if not os.path.isfile(state_path):
+        return {
+            "ready": False,
+            "policy": "cold-start-only",
+            "hint": "run scripts/bootstrap_cold_start.py to download the cold-start base once",
+            "state_path": state_path,
+        }
+    try:
+        with open(state_path, "r", encoding="utf-8") as fp:
+            state = json.load(fp)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(500, f"failed to read bootstrap state: {exc}") from exc
+    cs = state.get("cold_start") or {}
+    return {
+        "ready": bool(cs and cs.get("status") in ("downloaded", "already-present")),
+        "policy": state.get("policy", "cold-start-only"),
+        "cold_start": cs,
+        "state_path": state_path,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Self-training: fine-tune 트리거
+#   1) plan/current 의 train_* 값을 그대로 사용 (별도 카탈로그 X)
+#   2) model_answers 에서 학습 데이터를 jsonl 로 export
+#   3) llm_training_runs 에 row insert (status=pending)
+#   4) scripts/finetune_run.py 를 백그라운드 subprocess 로 spawn
+#   5) 스크립트가 직접 DB(status/metrics/checkpoint_path) 를 업데이트
+# ---------------------------------------------------------------------------
+import re as _re
+import subprocess as _subprocess
+import sys as _sys
+
+REPO_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TRAIN_DATA_DIR = os.path.join(
+    os.environ.get("DATA_DIR", os.path.join(REPO_ROOT_DIR, "data")),
+    "llm_training", "runs",
+)
+os.makedirs(TRAIN_DATA_DIR, exist_ok=True)
+
+_FENCE_RE = _re.compile(r"```([a-zA-Z0-9_+-]*)\n(.*?)```", _re.DOTALL)
+
+
+def _safe_dirname(model_id: str) -> str:
+    return model_id.replace("/", "__").replace(":", "_")
+
+
+def _split_answer_text(text: str) -> tuple[str | None, str]:
+    """answer_text 에서 첫 fenced code block 을 코드로, 나머지를 explanation 으로."""
+    if not text:
+        return None, ""
+    m = _FENCE_RE.search(text)
+    if not m:
+        return None, text.strip()
+    code = m.group(2).strip() or None
+    explanation = (text[: m.start()] + text[m.end():]).strip()
+    return code, explanation
+
+
+def _export_training_jsonl(out_path: str, *, max_samples: int = 5000) -> dict:
+    """``model_answers`` (status='ok') + ``answer_reuse_logs`` (decision='reused')
+    를 instruction-tuning jsonl 로 변환.
+
+    한 행당 다음 키를 가진다 (finetune_run.py 의 _format_example 와 1:1)::
+
+        {task, language, library, requirement, input_code, output_code, explanation}
+    """
+    rows = db.fetch_all(
+        """
+        SELECT ma.id, ma.prompt_text, ma.answer_text,
+               ma.requirement_id,
+               r.summary AS requirement_summary,
+               (SELECT gc.language FROM generated_code gc
+                  WHERE gc.answer_id = ma.id ORDER BY gc.id LIMIT 1) AS gc_language,
+               (SELECT gc.code_text FROM generated_code gc
+                  WHERE gc.answer_id = ma.id ORDER BY gc.id LIMIT 1) AS gc_code
+          FROM model_answers ma
+          LEFT JOIN requirements r ON r.id = ma.requirement_id
+         WHERE ma.status = 'ok'
+           AND ma.answer_text IS NOT NULL
+         ORDER BY ma.id DESC
+         LIMIT %s
+        """,
+        (max_samples,),
+    )
+
+    # 재사용 횟수가 많을수록 "정답에 가깝다" → 동일 샘플을 중복 포함해 가중치 부여
+    reuse_counts = {
+        r["matched_answer_id"]: int(r["c"])
+        for r in db.fetch_all(
+            """
+            SELECT matched_answer_id, COUNT(*) AS c
+              FROM answer_reuse_logs
+             WHERE decision = 'reused'
+             GROUP BY matched_answer_id
+            """
+        )
+    }
+
+    written = 0
+    by_task: dict[str, int] = {}
+    with open(out_path, "w", encoding="utf-8") as fp:
+        for row in rows:
+            answer_text = (row.get("answer_text") or "").strip()
+            if not answer_text:
+                continue
+            requirement = (row.get("requirement_summary")
+                           or row.get("prompt_text") or "").strip()
+            code, explanation = _split_answer_text(answer_text)
+
+            # task 추론
+            if code and requirement:
+                task = "spec_to_code"
+            elif code:
+                task = "generate"
+            elif explanation:
+                task = "explain"
+            else:
+                continue
+
+            sample = {
+                "task":        task,
+                "language":    row.get("gc_language") or "plain",
+                "library":     None,
+                "requirement": requirement[:4000],
+                "input_code":  row.get("gc_code") if task == "explain" else None,
+                "output_code": code if task != "explain" else None,
+                "explanation": explanation if explanation else None,
+            }
+            line = json.dumps(sample, ensure_ascii=False)
+
+            weight = 1 + min(int(reuse_counts.get(row["id"], 0)), 4)  # 1~5회 가중
+            for _ in range(weight):
+                fp.write(line + "\n")
+                written += 1
+            by_task[task] = by_task.get(task, 0) + weight
+
+    return {"path": out_path, "samples": written, "by_task": by_task}
+
+
+def _resolve_training_python() -> str:
+    return os.environ.get("PYTHON_BIN") or _sys.executable or "python"
+
+
+@app.post("/api/v1/training/run")
+def training_run(
+    run_name: str | None = Query(default=None, description="자유 식별자, 미지정 시 자동"),
+    max_samples: int = Query(default=5000, ge=1, le=200000),
+    dry_run: bool = Query(default=False, description="데이터셋만 만들고 학습은 spawn 안 함"),
+):
+    plan = db.fetch_one("SELECT * FROM model_plans ORDER BY id DESC LIMIT 1")
+    if not plan:
+        raise HTTPException(409, "no model plan; call POST /api/v1/hardware/plan/apply first")
+
+    train_method = (plan.get("train_method") or "").lower()
+    if not plan.get("train_trainable") or train_method in ("", "disabled"):
+        raise HTTPException(
+            409,
+            f"current hardware plan disables training (method={train_method or 'none'}). "
+            "Upgrade hardware or revisit the plan.",
+        )
+
+    base_id = plan.get("bootstrap_base_id") or os.environ.get(
+        "BOOTSTRAP_BASE_ID", "Qwen/Qwen2.5-Coder-1.5B"
+    )
+    base_dir = os.path.join(
+        os.environ.get("MODELS_DIR", os.path.join(REPO_ROOT_DIR, "models")),
+        "local", "base", _safe_dirname(base_id),
+    )
+    if not os.path.isfile(os.path.join(base_dir, "config.json")):
+        raise HTTPException(
+            409,
+            f"cold-start base not present at {base_dir}. "
+            "Run scripts/bootstrap_cold_start.py once before training.",
+        )
+
+    # 1) llm_training_runs row 생성 (stage_key='instruction_tuning')
+    stage = db.fetch_one(
+        "SELECT id FROM llm_training_stages WHERE stage_key = %s",
+        ("instruction_tuning",),
+    )
+    if not stage:
+        raise HTTPException(500, "llm_training_stages not initialized")
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    run_label = run_name or f"selftrain-{timestamp}"
+    hyperparams = {
+        "method":      train_method,
+        "precision":   plan.get("train_precision"),
+        "lora_rank":   plan.get("train_lora_rank"),
+        "lora_alpha":  plan.get("train_lora_alpha"),
+        "lora_dropout": plan.get("train_lora_dropout"),
+        "per_device_batch": plan.get("train_per_dev_batch"),
+        "grad_accum":  plan.get("train_grad_accum_steps"),
+        "seq_len":     plan.get("train_seq_len"),
+        "optimizer":   plan.get("train_optimizer"),
+        "device":      plan.get("train_device"),
+    }
+    run_id = db.execute(
+        """
+        INSERT INTO llm_training_runs
+          (stage_id, stage_key, run_name, base_model, hyperparams, status, created_at)
+        VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
+        """,
+        (stage["id"], "instruction_tuning", run_label, base_id,
+         json.dumps(hyperparams, ensure_ascii=False)),
+    )
+
+    # 2) 데이터셋 export
+    data_path = os.path.join(TRAIN_DATA_DIR, f"{run_label}.jsonl")
+    export_info = _export_training_jsonl(data_path, max_samples=max_samples)
+    if export_info["samples"] == 0:
+        db.execute(
+            "UPDATE llm_training_runs SET status='failed', "
+            "metrics_json=%s, finished_at=NOW() WHERE id=%s",
+            (json.dumps({"error": "no training data available"}), run_id),
+        )
+        raise HTTPException(409, "no training data: model_answers is empty or has no usable rows")
+
+    # 3) 출력 디렉터리
+    out_dir = os.path.join(
+        os.environ.get("MODELS_DIR", os.path.join(REPO_ROOT_DIR, "models")),
+        "local", "runs", run_label,
+    )
+
+    if dry_run:
+        return {
+            "run_id":    run_id,
+            "run_name":  run_label,
+            "base_id":   base_id,
+            "data":      export_info,
+            "out":       out_dir,
+            "spawned":   False,
+            "dry_run":   True,
+            "hyperparams": hyperparams,
+        }
+
+    # 4) subprocess spawn (detached: 부모가 죽어도 학습 계속)
+    script = os.path.join(REPO_ROOT_DIR, "scripts", "finetune_run.py")
+    cmd = [
+        _resolve_training_python(), script,
+        "--base-id", base_id,
+        "--data",    data_path,
+        "--out",     out_dir,
+        "--run-id",  str(run_id),
+        "--method",  train_method,
+        "--rank",    str(plan.get("train_lora_rank") or 16),
+        "--alpha",   str(plan.get("train_lora_alpha") or 32),
+        "--dropout", str(plan.get("train_lora_dropout") or 0.05),
+        "--epochs",  str(int(os.environ.get("TRAIN_EPOCHS", "1"))),
+        "--batch",   str(plan.get("train_per_dev_batch") or 1),
+        "--grad-accum", str(plan.get("train_grad_accum_steps") or 8),
+        "--seq-len", str(plan.get("train_seq_len") or 1024),
+        "--precision", str(plan.get("train_precision") or "bf16"),
+        "--device",    str(plan.get("train_device") or "auto"),
+        "--optimizer", str(plan.get("train_optimizer") or "adamw_torch"),
+    ]
+
+    log_path = os.path.join(
+        os.environ.get("DATA_DIR", os.path.join(REPO_ROOT_DIR, "data")),
+        "logs", f"finetune_{run_id}.spawn.log",
+    )
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    spawn_log = open(log_path, "ab")  # noqa: SIM115 (자식이 살아있는 동안 유지)
+    creation_flags = 0
+    if os.name == "nt":
+        creation_flags = getattr(_subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    proc = _subprocess.Popen(
+        cmd,
+        cwd=REPO_ROOT_DIR,
+        stdout=spawn_log,
+        stderr=spawn_log,
+        creationflags=creation_flags,
+        close_fds=(os.name != "nt"),
+    )
+
+    return {
+        "run_id":   run_id,
+        "run_name": run_label,
+        "base_id":  base_id,
+        "data":     export_info,
+        "out":      out_dir,
+        "spawned":  True,
+        "pid":      proc.pid,
+        "log":      log_path,
+        "hyperparams": hyperparams,
+    }
+
+
+@app.get("/api/v1/training/runs")
+def training_runs_list(limit: int = Query(default=20, ge=1, le=200)):
+    rows = db.fetch_all(
+        "SELECT id, stage_key, run_name, base_model, status, "
+        "checkpoint_path, started_at, finished_at, created_at "
+        "FROM llm_training_runs ORDER BY id DESC LIMIT %s",
+        (limit,),
+    )
+    return {"items": rows, "count": len(rows)}
+
+
+@app.get("/api/v1/training/runs/{run_id}")
+def training_run_detail(run_id: int):
+    row = db.fetch_one("SELECT * FROM llm_training_runs WHERE id=%s", (run_id,))
+    if not row:
+        raise HTTPException(404, f"training run #{run_id} not found")
     return row
 
 
@@ -1232,7 +1674,7 @@ def api_infer(payload: InferIn):
         prompt_parts.append("[이미지에서 추출]\n" + str(image_extraction.get("text")))
     prompt_text = "\n\n".join(prompt_parts) or "(empty)"
 
-    model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+    model_name = payload.model or _default_local_checkpoint()
     started = datetime.utcnow()
     answer_text, raw_resp = _generate_with_model(
         prompt_text, model_name, language, task="infer"
@@ -1342,7 +1784,7 @@ def api_optimize(payload: OptimizeIn):
         "[지시]\n" + (payload.instruction or "다음 코드를 더 효율적으로 최적화해줘.") +
         f"\n\n[코드 ({base_lang or 'plain'})]\n{base_code}"
     )
-    model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+    model_name = payload.model or _default_local_checkpoint()
     optimized_text, raw_resp = _generate_with_model(
         prompt, model_name, base_lang, task="optimize",
     )
@@ -1894,7 +2336,7 @@ def api_vlm_code_image_pipeline(payload: VlmCodePipelineIn):
             f"[이미지에서 추출한 코드 ({language or 'plain'})]\n{code_text}"
         )
         prompt_text = "\n\n".join(prompt_parts)
-        model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+        model_name = payload.model or _default_local_checkpoint()
 
         answer_text, raw_resp = _generate_with_model(
             prompt_text, model_name, language, task="vlm_code_pipeline",
@@ -3231,7 +3673,7 @@ def api_reuse_answer(payload: ReuseAnswerPipelineIn):
         }
 
     # ---- 5) LLM 적응(adapt): 기존 답변을 현재 요구사항에 맞게 수정 ----
-    adapt_model = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+    adapt_model = payload.model or _default_local_checkpoint()
     adapt_prompt_parts: list[str] = [
         "[지시]\n아래 기존 답변을 현재 요구사항에 맞게 필요한 부분만 수정해서 새 답변을 작성해줘.\n"
         "변경되지 않은 부분은 그대로 유지하고, 차이가 나는 곳만 자연스럽게 갱신해.",
@@ -3631,7 +4073,7 @@ def api_optimize_engine(payload: OptimizeEngineIn):
     llm_started = datetime.utcnow()
     optimized_text = payload.code
     raw_resp: dict[str, Any] | None = None
-    model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+    model_name = payload.model or _default_local_checkpoint()
     rule_only = not payload.use_llm
 
     if payload.use_llm:
@@ -3994,7 +4436,7 @@ def api_spec_extract(payload: SpecExtractIn):
             "}\n\n"
             f"[명세서]\n{text}"
         )
-        model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+        model_name = payload.model or _default_local_checkpoint()
         text_resp, raw_resp = _generate_with_model(
             prompt, model_name, language=None, task="spec_extract",
         )
@@ -4100,7 +4542,7 @@ def api_spec_engine(payload: SpecEngineIn):
     # ---- LLM 보강 (옵션) ----
     llm_used = False
     llm_latency_ms: int | None = None
-    model_name = payload.model or os.getenv("DEFAULT_LLM_MODEL", "stub-echo")
+    model_name = payload.model or _default_local_checkpoint()
     if payload.use_llm:
         llm_started = datetime.utcnow()
         prompt = (
