@@ -1,0 +1,29 @@
+# 환경 파일
+.env
+.env.*
+!.env.example
+
+# 데이터 / 모델 / 로그 (대용량, 민감)
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
+logs/**/*
+!logs/**/.gitkeep
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+build/

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>local-ai web-ui</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:2rem; }
+    .card { max-width: 640px; margin: 4rem auto; background:#1e293b; padding: 2rem; border-radius: 12px; }
+    code { background:#0f172a; padding:2px 6px; border-radius:4px; }
+    .ok { color:#22c55e; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>local-ai</h1>
+    <p>Step 2: Docker Compose 기본 실행 환경</p>
+    <p>Web UI <span class="ok">OK</span></p>
+    <p>Backend health: <code id="be">…</code></p>
+  </div>
+  <script>
+    fetch('/').catch(()=>{});
+    fetch((window.BACKEND_URL || 'http://localhost:8000') + '/health')
+      .then(r => r.json())
+      .then(j => document.getElementById('be').textContent = JSON.stringify(j))
+      .catch(e => document.getElementById('be').textContent = 'unreachable');
+  </script>
+</body>
+</html>
