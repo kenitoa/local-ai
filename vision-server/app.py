@@ -16,12 +16,15 @@
   - ui_design    : UI 설계 (와이어프레임/목업)
   - other        : 기타
 
-OCR 모델은 아직 통합되지 않았으므로 stub 텍스트(파일명/크기 기반) +
-규칙 기반 분류기를 제공한다. 실제 OCR/VLM 통합 시 ``_run_ocr`` 만 교체하면 된다.
+OCR은 로컬 Tesseract를 기본으로 사용하고, ``VISION_VLM_MODEL_PATH``가 지정되면
+로컬 TrOCR/VLM 모델을 우선 사용한다. 모델/바이너리가 없을 때만 메타데이터
+placeholder로 폴백한다.
 """
 from __future__ import annotations
 
 import base64
+from functools import lru_cache
+from io import BytesIO
 import logging
 import os
 import re
@@ -47,6 +50,12 @@ logging.basicConfig(
 log = logging.getLogger(SERVICE_NAME)
 
 app = FastAPI(title=f"local-ai {SERVICE_NAME}")
+
+OCR_ENGINE = os.getenv("OCR_ENGINE", "auto").strip().lower()
+OCR_LANGS = os.getenv("OCR_LANGS", "kor+eng").strip() or "eng"
+OCR_TESSERACT_CONFIG = os.getenv("OCR_TESSERACT_CONFIG", "--psm 6")
+VISION_VLM_MODEL_PATH = os.getenv("VISION_VLM_MODEL_PATH", "").strip()
+VISION_VLM_LOCAL_ONLY = os.getenv("VISION_VLM_LOCAL_ONLY", "1").lower() not in ("0", "false", "no")
 
 
 # ---------------------------------------------------------------------------
@@ -112,15 +121,124 @@ def classify_by_text(text: str | None, *, hint_filename: str | None = None) -> t
 
 
 # ---------------------------------------------------------------------------
-# OCR placeholder
+# OCR / VLM engines
 # ---------------------------------------------------------------------------
-def _run_ocr(file_path: str | None, image_bytes: bytes | None) -> tuple[str, str]:
-    """실제 OCR 자리 placeholder.
+def _open_pil_image(file_path: str | None, image_bytes: bytes | None):
+    from PIL import Image  # type: ignore
 
-    - 파일 경로가 주어지면 파일명/크기 정보를 텍스트화.
-    - 추후 PaddleOCR / TrOCR / VLM 등으로 교체.
-    Returns (text, engine_name)
-    """
+    if file_path and os.path.exists(file_path):
+        return Image.open(file_path).convert("RGB")
+    if image_bytes is not None:
+        return Image.open(BytesIO(image_bytes)).convert("RGB")
+    raise FileNotFoundError("image input not found")
+
+
+@lru_cache(maxsize=1)
+def _load_vlm_ocr_model():
+    if not VISION_VLM_MODEL_PATH:
+        return None
+    try:
+        from transformers import AutoProcessor, VisionEncoderDecoderModel  # type: ignore
+
+        processor = AutoProcessor.from_pretrained(
+            VISION_VLM_MODEL_PATH,
+            local_files_only=VISION_VLM_LOCAL_ONLY,
+        )
+        model = VisionEncoderDecoderModel.from_pretrained(
+            VISION_VLM_MODEL_PATH,
+            local_files_only=VISION_VLM_LOCAL_ONLY,
+        )
+        return processor, model
+    except Exception as exc:  # noqa: BLE001
+        log.warning("VLM OCR model unavailable path=%s err=%s", VISION_VLM_MODEL_PATH, exc)
+        return None
+
+
+def _run_vlm_ocr(file_path: str | None, image_bytes: bytes | None) -> tuple[str, str, float] | None:
+    loaded = _load_vlm_ocr_model()
+    if not loaded:
+        return None
+    processor, model = loaded
+    try:
+        image = _open_pil_image(file_path, image_bytes)
+        pixel_values = processor(images=image, return_tensors="pt").pixel_values
+        generated_ids = model.generate(pixel_values, max_new_tokens=384)
+        text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+        if text:
+            return text, "trocr-vlm", 0.85
+    except Exception as exc:  # noqa: BLE001
+        log.warning("VLM OCR failed: %s", exc)
+    return None
+
+
+def _run_tesseract_ocr(file_path: str | None, image_bytes: bytes | None) -> tuple[str, str, float] | None:
+    try:
+        import pytesseract  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        log.info("pytesseract unavailable: %s", exc)
+        return None
+
+    try:
+        image = _open_pil_image(file_path, image_bytes)
+        data = pytesseract.image_to_data(
+            image,
+            lang=OCR_LANGS,
+            config=OCR_TESSERACT_CONFIG,
+            output_type=pytesseract.Output.DICT,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if "kor" in OCR_LANGS:
+            try:
+                image = _open_pil_image(file_path, image_bytes)
+                data = pytesseract.image_to_data(
+                    image,
+                    lang="eng",
+                    config=OCR_TESSERACT_CONFIG,
+                    output_type=pytesseract.Output.DICT,
+                )
+            except Exception as fallback_exc:  # noqa: BLE001
+                log.warning("tesseract OCR failed: %s", fallback_exc)
+                return None
+        else:
+            log.warning("tesseract OCR failed: %s", exc)
+            return None
+
+    lines: dict[tuple[int, int, int], list[tuple[int, str]]] = {}
+    confidences: list[float] = []
+    texts = data.get("text", [])
+    confs = data.get("conf", [])
+    blocks = data.get("block_num", [])
+    paragraphs = data.get("par_num", [])
+    line_nums = data.get("line_num", [])
+    word_nums = data.get("word_num", [])
+    for idx, (text, conf) in enumerate(zip(texts, confs)):
+        token = str(text or "").strip()
+        if not token:
+            continue
+        key = (
+            int(blocks[idx]) if idx < len(blocks) else 0,
+            int(paragraphs[idx]) if idx < len(paragraphs) else 0,
+            int(line_nums[idx]) if idx < len(line_nums) else idx,
+        )
+        word_no = int(word_nums[idx]) if idx < len(word_nums) else idx
+        lines.setdefault(key, []).append((word_no, token))
+        try:
+            score = float(conf)
+            if score >= 0:
+                confidences.append(score / 100.0)
+        except Exception:  # noqa: BLE001
+            pass
+    reconstructed: list[str] = []
+    for key in sorted(lines):
+        reconstructed.append(" ".join(token for _, token in sorted(lines[key], key=lambda x: x[0])))
+    result = "\n".join(reconstructed).strip()
+    if not result:
+        return None
+    confidence = round(sum(confidences) / len(confidences), 4) if confidences else 0.5
+    return result, f"tesseract:{OCR_LANGS}", confidence
+
+
+def _run_stub_ocr(file_path: str | None, image_bytes: bytes | None) -> tuple[str, str, float]:
     parts: list[str] = []
     name: str | None = None
     size = 0
@@ -137,9 +255,26 @@ def _run_ocr(file_path: str | None, image_bytes: bytes | None) -> tuple[str, str
     text = (
         "[vision-server stub OCR]\n"
         + "\n".join(parts) + "\n"
-        "OCR 모델이 아직 로드되지 않아 파일 메타로부터 추정한 placeholder 텍스트입니다.\n"
+        "OCR/VLM 엔진을 사용할 수 없어 파일 메타로부터 추정한 placeholder 텍스트입니다.\n"
     )
-    return text, "stub-ocr"
+    return text, "stub-ocr", 0.0
+
+
+def _run_ocr(file_path: str | None, image_bytes: bytes | None) -> tuple[str, str, float]:
+    """Run real local OCR/VLM first, then fall back to metadata placeholder."""
+    engines = [OCR_ENGINE] if OCR_ENGINE not in ("", "auto") else ["vlm", "tesseract"]
+    for engine in engines:
+        if engine in ("vlm", "trocr"):
+            result = _run_vlm_ocr(file_path, image_bytes)
+        elif engine in ("tesseract", "ocr"):
+            result = _run_tesseract_ocr(file_path, image_bytes)
+        elif engine == "stub":
+            result = _run_stub_ocr(file_path, image_bytes)
+        else:
+            result = None
+        if result and result[0].strip():
+            return result
+    return _run_stub_ocr(file_path, image_bytes)
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +352,7 @@ def classify(payload: ClassifyIn):
 
     text_for_classification = payload.text_hint
     if not text_for_classification and (payload.file_path or img_bytes):
-        text_for_classification, _engine = _run_ocr(payload.file_path, img_bytes)
+        text_for_classification, _engine, _confidence = _run_ocr(payload.file_path, img_bytes)
 
     name = payload.filename or (Path(payload.file_path).name if payload.file_path else None)
     image_type, confidence, source = classify_by_text(text_for_classification, hint_filename=name)
@@ -261,7 +396,7 @@ def extract(payload: ExtractIn):
         size = len(img_bytes)
 
     # 1) OCR (현재는 stub)
-    raw_text, engine = _run_ocr(payload.file_path, img_bytes)
+    raw_text, engine, ocr_confidence = _run_ocr(payload.file_path, img_bytes)
 
     # 2) 이미지 타입 결정 (명시 > 자동 분류)
     if payload.image_type and payload.image_type in SUPPORTED_TYPE_KEYS:
@@ -278,6 +413,7 @@ def extract(payload: ExtractIn):
     # 4) 메타데이터 (이후 backend 가 image_data/metadata/*.json 에 저장)
     metadata = {
         "engine": engine,
+        "ocr_confidence": ocr_confidence,
         "image_type": image_type,
         "image_type_confidence": type_conf,
         "image_type_source": type_source,
@@ -297,7 +433,7 @@ def extract(payload: ExtractIn):
         "source": source,
         "bytes": size,
         "engine": engine,
-        "confidence": 0.0,                # OCR 자체의 신뢰도 (stub)
+        "confidence": ocr_confidence,
         "image_type": image_type,
         "image_type_confidence": type_conf,
         "image_type_source": type_source,
@@ -325,8 +461,8 @@ def extract(payload: ExtractIn):
 #
 # 본 단계에서는 실제 VLM 학습을 수행하지 않는다(가중치 제공 X). 대신
 #   - 학습 데이터(JSON) 스키마와 단계 카탈로그를 정의하고,
-#   - 초기 파이프라인(detect → ocr → save) 의 placeholder 구현을 노출한다.
-# 실제 모델이 들어오면 ``_detect_code_regions`` / ``_run_ocr`` 만 교체하면 된다.
+#   - 초기 파이프라인(detect → ocr → save) 을 실제 OCR/비전 엔진에 연결한다.
+# 로컬 VLM 모델이 설정되지 않은 환경에서는 Tesseract + OpenCV 경로로 동작한다.
 # ===========================================================================
 VLM_TRAINING_STAGES: list[dict[str, Any]] = [
     {"stage_no": 1, "stage_key": "code_image",
@@ -395,13 +531,7 @@ def _detect_code_regions(
     file_path: str | None,
     image_bytes: bytes | None,
 ) -> tuple[list[dict[str, Any]], str]:
-    """이미지에서 코드 영역 bbox 를 탐지(placeholder).
-
-    실제 VLM/객체탐지 모델이 도입되기 전까지는 "이미지 전체 = 코드 영역" 으로
-    가정한 단일 영역을 반환한다. ``Pillow`` 가 설치돼 있으면 정확한 크기를
-    사용하고, 없으면 0,0,0,0 을 반환한다. 반환 형식은 LLM/DB 가 그대로
-    사용할 수 있는 표준 bbox 표현이다.
-    """
+    """Detect likely code/text regions with OpenCV, falling back to full frame."""
     width, height = 0, 0
     try:
         from PIL import Image  # type: ignore
@@ -413,8 +543,47 @@ def _detect_code_regions(
             with Image.open(BytesIO(image_bytes)) as im:
                 width, height = im.size
     except Exception:  # noqa: BLE001
-        # Pillow 미설치 또는 디코딩 실패 → 크기 0 으로 폴백
         pass
+
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+
+        if file_path and os.path.exists(file_path):
+            image = cv2.imread(file_path)
+        elif image_bytes:
+            arr = np.frombuffer(image_bytes, dtype=np.uint8)
+            image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        else:
+            image = None
+        if image is not None:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 4))
+            dilated = cv2.dilate(thresh, kernel, iterations=2)
+            contours, _hier = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            boxes: list[tuple[int, int, int, int]] = []
+            img_h, img_w = gray.shape[:2]
+            min_area = max(250, int(img_w * img_h * 0.002))
+            for contour in contours:
+                x, y, w, h = cv2.boundingRect(contour)
+                area = w * h
+                if area >= min_area and w >= max(24, img_w * 0.08) and h >= 8:
+                    boxes.append((x, y, x + w, y + h))
+            if boxes:
+                x1 = max(0, min(b[0] for b in boxes))
+                y1 = max(0, min(b[1] for b in boxes))
+                x2 = min(img_w, max(b[2] for b in boxes))
+                y2 = min(img_h, max(b[3] for b in boxes))
+                return [{
+                    "bbox": [x1, y1, x2, y2],
+                    "score": round(min(0.95, 0.45 + 0.08 * len(boxes)), 4),
+                    "label": "code",
+                    "source": "opencv-text-blocks",
+                    "block_count": len(boxes),
+                }], "opencv-text-blocks"
+    except Exception as exc:  # noqa: BLE001
+        log.info("opencv region detection fallback: %s", exc)
 
     region = {
         "bbox": [0, 0, width, height],
@@ -452,7 +621,7 @@ def vlm_detect_code_region(payload: VlmCodeRegionIn):
         raise HTTPException(400, "file_path 또는 image_base64 중 하나는 필요합니다")
 
     regions, detector = _detect_code_regions(payload.file_path, img_bytes)
-    raw_text, ocr_engine = _run_ocr(payload.file_path, img_bytes)
+    raw_text, ocr_engine, ocr_confidence = _run_ocr(payload.file_path, img_bytes)
 
     # Stage 1 은 코드 영역만 보므로 spec slot 을 비우고 code slot 으로만 채운다.
     code_text = raw_text
@@ -468,6 +637,7 @@ def vlm_detect_code_region(payload: VlmCodeRegionIn):
         "stage_key": "code_image",
         "detector": detector,
         "ocr_engine": ocr_engine,
+        "ocr_confidence": ocr_confidence,
         "regions": regions,
         "region_count": len(regions),
         "language": language,

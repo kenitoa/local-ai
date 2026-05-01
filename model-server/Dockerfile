@@ -22,5 +22,5 @@ ENV SERVICE_NAME=model-server SERVICE_PORT=8001 \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 EXPOSE 8001
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health').status==200 else 1)"
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health', timeout=2).status==200 else 1)"
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]

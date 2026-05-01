@@ -285,7 +285,8 @@ CREATE TABLE IF NOT EXISTS embeddings (
   PRIMARY KEY (id),
   UNIQUE KEY uq_emb_target_model (target_type, target_id, model_name),
   KEY idx_emb_hash (content_hash),
-  KEY idx_emb_model (model_name)
+  KEY idx_emb_model (model_name),
+  KEY idx_emb_search_model_dim_type (model_name, dim, target_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------

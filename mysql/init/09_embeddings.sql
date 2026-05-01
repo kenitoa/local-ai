@@ -77,6 +77,8 @@ ALTER TABLE embeddings
   ADD COLUMN IF NOT EXISTS source_text_hash CHAR(64) NULL
     COMMENT '원문 sha256 (content_hash 와 동일, 명시적 alias)',
   ADD KEY IF NOT EXISTS idx_emb_target_pair (target_type, target_id),
+  ADD KEY IF NOT EXISTS idx_emb_search_model_dim_type (model_name, dim, target_type),
+  ADD KEY IF NOT EXISTS idx_emb_search_version_dim_type (model_version, dim, target_type),
   ADD KEY IF NOT EXISTS idx_emb_created (created_at);
 
 -- -----------------------------------------------------

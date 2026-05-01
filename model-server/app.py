@@ -46,6 +46,8 @@ _runtime_lock = threading.Lock()
 _runtime: dict = {
     "source":          "default",
     "checkpoint":      os.getenv("LOCAL_CHECKPOINT", "self/cold-start"),
+    "checkpoint_path": None,
+    "adapter_path":    None,
     "device":          os.getenv("MODEL_SERVER_DEVICE", "auto"),
     "n_ctx":           int(os.getenv("LLM_N_CTX", "4096")),
     "n_batch":         int(os.getenv("LLM_N_BATCH", "256")),
@@ -103,6 +105,14 @@ def _apply_plan_row(row: dict) -> None:
         })
 
 
+def _reload_engine() -> dict:
+    infer_engine.load_from_runtime(dict(_runtime))
+    _resize_inference_semaphore(_runtime.get("max_concurrency") or 1)
+    runtime = current_runtime()
+    runtime["engine"] = infer_engine.state()
+    return runtime
+
+
 def refresh_plan() -> dict:
     row = _fetch_plan_from_backend()
     if row:
@@ -112,11 +122,12 @@ def refresh_plan() -> dict:
                  _runtime["n_gpu_layers"], _runtime["bootstrap_base"])
     # plan 적용 후 추론 엔진을 (재)로드 시도. 실패해도 stub fallback 유지.
     try:
-        infer_engine.load_from_runtime(dict(_runtime))
+        return _reload_engine()
     except Exception as exc:  # noqa: BLE001
         log.warning("infer_engine load failed: %s", exc)
-    _resize_inference_semaphore(_runtime.get("max_concurrency") or 1)
-    return dict(_runtime)
+    runtime = current_runtime()
+    runtime["engine"] = infer_engine.state()
+    return runtime
 
 
 def current_runtime() -> dict:
@@ -269,6 +280,41 @@ def api_runtime_refresh():
     return refresh_plan()
 
 
+class ActivateAdapterIn(BaseModel):
+    checkpoint: str | None = None
+    checkpoint_path: str | None = None
+    adapter_path: str | None = None
+    use_latest: bool = False
+
+
+@app.post("/api/v1/runtime/activate-adapter")
+def api_runtime_activate_adapter(payload: ActivateAdapterIn):
+    """특정 LoRA 어댑터를 활성화하고 추론 엔진을 즉시 재로드한다."""
+    adapter_path = payload.adapter_path
+    if payload.use_latest and not adapter_path:
+        adapter_path = None
+    elif adapter_path is None and not payload.checkpoint_path:
+        raise HTTPException(400, "adapter_path, checkpoint_path, use_latest 중 하나는 필요합니다")
+
+    with _runtime_lock:
+        _runtime["checkpoint"] = payload.checkpoint or _runtime.get("checkpoint") or DEFAULT_MODEL
+        _runtime["checkpoint_path"] = payload.checkpoint_path
+        _runtime["adapter_path"] = adapter_path
+        _runtime["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    return _reload_engine()
+
+
+@app.post("/api/v1/runtime/deactivate-adapter")
+def api_runtime_deactivate_adapter():
+    """LoRA 어댑터를 해제하고 베이스 모델만 다시 로드한다."""
+    with _runtime_lock:
+        _runtime["checkpoint"] = "self/cold-start"
+        _runtime["checkpoint_path"] = None
+        _runtime["adapter_path"] = ""
+        _runtime["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    return _reload_engine()
+
+
 # ---------------------------------------------------------------------------
 # Step 8: /api/v1/generate - 추론 stub
 # 실제 LLM 연동 전까지는 입력을 echo + 간단한 코드 블록을 반환한다.
@@ -296,6 +342,33 @@ def generate(payload: GenerateIn):
     lang = payload.language or "plain"
     started = datetime.utcnow()
     task_label = payload.task or "infer"
+    max_tokens = max(1, min(int(payload.max_tokens or int(os.getenv("LLM_MAX_NEW_TOKENS", "192"))), 1024))
+    temperature = float(payload.temperature if payload.temperature is not None else 0.2)
+
+    if infer_engine.available():
+        try:
+            with _infer_sem:
+                result = infer_engine.generate(
+                    payload.prompt or "",
+                    max_new_tokens=max_tokens,
+                    temperature=temperature,
+                )
+            real_text = result.get("text") or ""
+            latency_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
+            return {
+                "model": model,
+                "task": task_label,
+                "text": real_text,
+                "language": lang,
+                "latency_ms": latency_ms,
+                "tokens_input": result.get("tokens_input"),
+                "tokens_output": result.get("tokens_output"),
+                "stub": False,
+                "device": result.get("device"),
+            }
+        except Exception as exc:  # noqa: BLE001
+            log.warning("real /api/v1/generate failed: %s", exc)
+
     text = (
         f"# {model} \u00b7 {task_label} (stub)\n\n"
         f"\uc785\ub825 \uc694\uc57d ({lang}):\n\n"

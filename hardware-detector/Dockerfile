@@ -18,5 +18,5 @@ ENV SERVICE_NAME=hardware-detector \
     PUSH_ON_STARTUP=1
 EXPOSE 8005
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8005/health').status==200 else 1)"
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8005/health', timeout=2).status==200 else 1)"
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8005"]

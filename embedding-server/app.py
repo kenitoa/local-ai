@@ -3,6 +3,8 @@ import hashlib
 import logging
 import math
 import os
+import threading
+from collections import OrderedDict
 from datetime import datetime
 
 from fastapi import FastAPI
@@ -52,6 +54,9 @@ class EmbedIn(BaseModel):
 
 
 DEFAULT_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL", "stub-hash")
+EMBED_CACHE_SIZE = max(0, int(os.getenv("EMBED_CACHE_SIZE", "512")))
+_embed_cache: OrderedDict[tuple[str, int], list[float]] = OrderedDict()
+_embed_cache_lock = threading.Lock()
 
 
 def _hash_embedding(text: str, dim: int) -> list[float]:
@@ -69,11 +74,29 @@ def _hash_embedding(text: str, dim: int) -> list[float]:
     return [x / norm for x in vec]
 
 
+def _cached_hash_embedding(text: str, sha: str, dim: int) -> list[float]:
+    if EMBED_CACHE_SIZE <= 0:
+        return _hash_embedding(text, dim)
+    key = (sha, dim)
+    with _embed_cache_lock:
+        cached = _embed_cache.get(key)
+        if cached is not None:
+            _embed_cache.move_to_end(key)
+            return cached
+    vec = _hash_embedding(text, dim)
+    with _embed_cache_lock:
+        _embed_cache[key] = vec
+        _embed_cache.move_to_end(key)
+        while len(_embed_cache) > EMBED_CACHE_SIZE:
+            _embed_cache.popitem(last=False)
+    return vec
+
+
 @app.post("/api/v1/embed")
 def embed(payload: EmbedIn):
     dim = max(8, min(payload.dim or 128, 1024))
-    vec = _hash_embedding(payload.text or "", dim)
     sha = hashlib.sha256((payload.text or "").encode("utf-8")).hexdigest()
+    vec = _cached_hash_embedding(payload.text or "", sha, dim)
     return {
         "model": payload.model or DEFAULT_MODEL,
         "dim": dim,

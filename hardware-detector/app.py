@@ -26,6 +26,8 @@ import platform
 import shutil
 import socket
 import subprocess
+import threading
+import time
 from datetime import datetime
 from typing import Any
 
@@ -51,6 +53,10 @@ log = logging.getLogger(SERVICE_NAME)
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000").rstrip("/")
 STORAGE_PATH = os.getenv("STORAGE_PATH", "/app/data")
 PUSH_ON_STARTUP = os.getenv("PUSH_ON_STARTUP", "1") == "1"
+PROFILE_CACHE_TTL_SEC = max(0.0, float(os.getenv("PROFILE_CACHE_TTL_SEC", "30")))
+_profile_cache: dict[str, Any] | None = None
+_profile_cache_at = 0.0
+_profile_cache_lock = threading.Lock()
 
 app = FastAPI(title=f"local-ai {SERVICE_NAME}")
 
@@ -213,7 +219,13 @@ def _fingerprint(profile: dict[str, Any]) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def collect_profile() -> dict[str, Any]:
+def collect_profile(*, force: bool = False) -> dict[str, Any]:
+    global _profile_cache, _profile_cache_at
+    if not force and PROFILE_CACHE_TTL_SEC > 0:
+        with _profile_cache_lock:
+            if _profile_cache is not None and time.monotonic() - _profile_cache_at < PROFILE_CACHE_TTL_SEC:
+                return dict(_profile_cache)
+
     cpu = detect_cpu()
     ram = detect_ram()
     storage = detect_storage(STORAGE_PATH)
@@ -256,6 +268,10 @@ def collect_profile() -> dict[str, Any]:
         },
     }
     profile["fingerprint"] = _fingerprint(profile)
+    if PROFILE_CACHE_TTL_SEC > 0:
+        with _profile_cache_lock:
+            _profile_cache = dict(profile)
+            _profile_cache_at = time.monotonic()
     return profile
 
 
@@ -297,13 +313,13 @@ def health():
 @app.get("/api/v1/detect")
 def detect_now():
     """즉시 감지 결과 반환(저장 안 함)."""
-    return collect_profile()
+    return collect_profile(force=True)
 
 
 @app.post("/api/v1/detect")
 def detect_and_store():
     """감지 후 backend 에 업서트."""
-    profile = collect_profile()
+    profile = collect_profile(force=True)
     pushed = push_profile(profile)
     if pushed is None:
         raise HTTPException(502, "failed to persist hardware profile via backend")
@@ -329,7 +345,7 @@ def _startup():
     if not PUSH_ON_STARTUP:
         return
     try:
-        profile = collect_profile()
+        profile = collect_profile(force=True)
         log.info(
             "detected: cpu=%s cores=%s ram=%sMB gpu=%s run_mode=%s",
             profile["cpu_model"], profile["cpu_cores"], profile["ram_mb"],

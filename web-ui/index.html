@@ -236,7 +236,7 @@
           </div>
           <div class="col">
             <label for="ci-model">모델</label>
-            <input type="text" id="ci-model" placeholder="예: stub-echo / llama3-8b" value="stub-echo" />
+            <input type="text" id="ci-model" placeholder="예: self/cold-start" value="self/cold-start" />
           </div>
         </div>
 
@@ -278,6 +278,10 @@
           <div class="col">
             <label for="iu-language">코드 언어 hint(선택)</label>
             <input type="text" id="iu-language" placeholder="예: python, javascript" />
+          </div>
+          <div class="col">
+            <label for="iu-model">모델</label>
+            <input type="text" id="iu-model" placeholder="예: self/cold-start" value="self/cold-start" />
           </div>
         </div>
 
@@ -506,7 +510,7 @@
           </div>
           <div class="col">
             <label for="it-model">모델</label>
-            <input id="it-model" type="text" value="stub-echo" />
+            <input id="it-model" type="text" value="self/cold-start" />
           </div>
         </div>
         <label for="it-code" style="margin-top:0.6rem">코드 (비우면 기본 샘플 사용)</label>
@@ -583,7 +587,7 @@
           </div>
           <div class="col">
             <label for="bm-model">모델</label>
-            <input id="bm-model" type="text" value="stub-echo" />
+            <input id="bm-model" type="text" value="self/cold-start" />
           </div>
         </div>
         <div class="row">
@@ -694,6 +698,7 @@
         </div>
       </div>
     </section>
+
   </main>
 
   <div id="toast" class="toast"></div>
@@ -701,8 +706,8 @@
 <script>
 (() => {
   // -------------------- API base --------------------
-  const BACKEND = (window.BACKEND_URL || 'http://localhost:8000');
-  const HW_DETECTOR = (window.HW_DETECTOR_URL || 'http://localhost:8005');
+  const BACKEND = (window.BACKEND_URL || '');
+  const HW_DETECTOR = (window.HW_DETECTOR_URL || '/hardware-detector');
 
   // -------------------- API key (단일 키 인증) --------------------
   const API_KEY_STORAGE = 'localai.apiKey';
@@ -741,6 +746,8 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+  const DEFAULT_MODEL = 'self/cold-start';
+  const SIDEBAR_REFRESH_MS = 30000;
   let toastTimer = null;
   function toast(msg, type = '') {
     const t = $('toast');
@@ -803,8 +810,13 @@
   }
 
   async function refreshSidebar() {
+    if (document.hidden) return;
+    const [health, hardware] = await Promise.allSettled([
+      api('/health'),
+      api('/api/v1/hardware/current'),
+    ]);
     try {
-      const j = await api('/health');
+      const j = health.value;
       $('sidebar-backend').innerHTML = j.status === 'ok'
         ? '<span class="pill up"><span class="dot up"></span>up</span>'
         : '<span class="pill down"><span class="dot down"></span>down</span>';
@@ -812,7 +824,7 @@
       $('sidebar-backend').innerHTML = '<span class="pill down"><span class="dot down"></span>down</span>';
     }
     try {
-      const p = await api('/api/v1/hardware/current');
+      const p = hardware.value;
       setModeBadge($('sidebar-mode-badge'), p.run_mode);
     } catch {
       setModeBadge($('sidebar-mode-badge'), null);
@@ -821,8 +833,14 @@
 
   // -------------------- 1) Dashboard --------------------
   async function loadDashboard() {
+    const [hardware, services, answers, storageInfo] = await Promise.allSettled([
+      api('/api/v1/hardware/current'),
+      api('/api/v1/system/services'),
+      api('/api/v1/model-answers?limit=1&offset=0'),
+      api('/api/v1/storage/info'),
+    ]);
     try {
-      const p = await api('/api/v1/hardware/current');
+      const p = hardware.value;
       setModeBadge($('db-mode-badge'), p.run_mode);
       $('db-mode-detail').textContent =
         `accelerator=${p.accelerator || '-'} · CPU=${p.cpu_cores || '?'}c · RAM=${p.ram_mb || '?'}MB`;
@@ -831,7 +849,7 @@
       $('db-mode-detail').textContent = '저장된 하드웨어 프로필이 없습니다.';
     }
     try {
-      const sys = await api('/api/v1/system/services');
+      const sys = services.value;
       const total = sys.services.length;
       const up = sys.services.filter(s => s.status === 'up').length;
       $('db-services-up').textContent = `${up} / ${total}`;
@@ -839,13 +857,13 @@
       $('db-services-up').textContent = '?';
     }
     try {
-      const list = await api('/api/v1/model-answers?limit=1&offset=0');
+      const list = answers.value;
       $('db-answers').textContent = list.total ?? '?';
     } catch {
       $('db-answers').textContent = '?';
     }
     try {
-      const info = await api('/api/v1/storage/info');
+      const info = storageInfo.value;
       const sum = Object.values(info.categories).reduce((a,c) => a + (c.file_count || 0), 0);
       $('db-files').textContent = sum;
     } catch {
@@ -863,19 +881,19 @@
     const requirement = $('ci-requirement').value.trim();
     const code = $('ci-code').value;
     const language = $('ci-language').value || null;
-    const model = $('ci-model').value.trim() || 'stub-echo';
+    const model = $('ci-model').value.trim() || DEFAULT_MODEL;
     if (!requirement && !code) { toast('요구사항이나 코드 중 하나는 입력하세요', 'error'); return; }
     $('ci-run').disabled = true;
     $('ci-status').textContent = '실행 중…';
     try {
-      const r = await api('/api/v1/run', {
+      const r = await api('/api/infer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requirement: requirement || null,
-          code_text: code || null,
-          code_language: language,
-          model_name: model,
+          code: code || null,
+          language: language,
+          model: model,
         }),
       });
       $('ci-status').textContent = `완료 · answer_id=${r.answer_id} (${r.latency_ms}ms)`;
@@ -894,6 +912,8 @@
 
   // -------------------- 3) Image upload --------------------
   let pendingImageFile = null;
+  let lastImageUpload = null;
+  let lastExtractedCode = '';
 
   // Step 10: 지원 이미지 타입 채우기
   async function loadImageTypes() {
@@ -926,6 +946,8 @@
   });
   function renderImageUploadResult(r) {
     const ext = r.extracted_files || {};
+    const extraction = r.extraction || {};
+    const extractedCode = extraction.code || extraction.text || '';
     const conf = (r.image_type_confidence != null)
       ? Math.round(r.image_type_confidence * 100) + '%' : '-';
     const links = ['text','code','spec','metadata']
@@ -944,7 +966,28 @@
         </span>
       </div>
       ${links ? `<div style="margin-top:8px"><strong>추출 산출물:</strong><ul>${links}</ul></div>` : ''}
+      ${extractedCode ? `<div style="margin-top:8px"><strong>추출 코드/텍스트 미리보기</strong><pre class="code">${escapeHtml(extractedCode.slice(0, 1200))}</pre></div>` : ''}
+      ${extractedCode ? `<div class="actions" style="margin-top:8px"><button class="secondary" id="iu-send-code">2번으로 보내기</button><button class="secondary" id="iu-send-lang">7번에서 분석</button></div>` : ''}
     `;
+    if (extractedCode) {
+      const sendCode = $('iu-send-code');
+      const sendLang = $('iu-send-lang');
+      if (sendCode) {
+        sendCode.addEventListener('click', () => {
+          $('ci-code').value = extractedCode;
+          $('ci-language').value = extraction.language || $('iu-language').value || '';
+          showScreen('code-input');
+        });
+      }
+      if (sendLang) {
+        sendLang.addEventListener('click', () => {
+          $('lang-code').value = extractedCode;
+          $('lang-hint').value = extraction.language || $('iu-language').value || '';
+          showScreen('language');
+          runLanguageAnalyze();
+        });
+      }
+    }
   }
   async function doUploadImage() {
     if (!pendingImageFile) return null;
@@ -956,6 +999,8 @@
     fd.append('extract', 'true');
     $('iu-status').textContent = '업로드 + 분류/추출 중…';
     const r = await api('/api/input/image', { method: 'POST', body: fd });
+    lastImageUpload = r;
+    lastExtractedCode = ((r.extraction || {}).code || (r.extraction || {}).text || '');
     $('iu-status').textContent =
       `완료 · image_id=${r.image_id} · type=${r.image_type || '-'}`;
     renderImageUploadResult(r);
@@ -970,22 +1015,25 @@
       const up = await doUploadImage();
       if (!up) return;
       const requirement = $('iu-requirement').value.trim();
+      const model = $('iu-model').value.trim() || DEFAULT_MODEL;
       $('iu-status').textContent = '실행 중…';
-      const r = await api('/api/v1/run', {
+      const r = await api('/api/vlm/code-image-pipeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          raw_input_id: up.raw_input_id,
           image_id: up.image_id,
           requirement: requirement || null,
-          model_name: 'stub-echo',
+          model: model,
+          language_hint: $('iu-language').value.trim() || null,
+          forward_to_llm: true,
         }),
       });
-      $('iu-status').textContent = `완료 · answer_id=${r.answer_id}`;
+      if (!r.llm_answer_id) throw new Error('LLM 답변이 생성되지 않았습니다');
+      $('iu-status').textContent = `완료 · answer_id=${r.llm_answer_id}`;
       toast('답변 저장됨', 'ok');
-      lastAnswerId = r.answer_id;
-      lastOriginalCode = '';
-      await openResult(r.answer_id);
+      lastAnswerId = r.llm_answer_id;
+      lastOriginalCode = r.code || lastExtractedCode || '';
+      await openResult(r.llm_answer_id);
       showScreen('result');
     } catch (e) {
       toast('실패: ' + e.message, 'error');
@@ -1183,7 +1231,10 @@
   refreshSidebar();
   const initial = (location.hash || '#dashboard').replace(/^#/, '');
   showScreen(initial);
-  setInterval(refreshSidebar, 15000);
+  setInterval(refreshSidebar, SIDEBAR_REFRESH_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshSidebar();
+  });
 
   // -------------------- 7) Language Compatibility --------------------
   function statTile(label, value) {
@@ -1357,7 +1408,7 @@
     const requirement = $('it-requirement').value.trim();
     const code = $('it-code').value;
     const language = $('it-language').value.trim() || 'python';
-    const model = $('it-model').value.trim() || 'stub-echo';
+    const model = $('it-model').value.trim() || DEFAULT_MODEL;
     $('it-run').disabled = true;
     $('it-status').textContent = '실행 중… (이미지/embedding/추출 등 모든 시나리오를 순차 실행)';
     $('it-evidence-card').style.display = 'none';
@@ -1543,7 +1594,7 @@
   async function runBenchmark() {
     const osName = $('bm-host-os').value.trim();
     const osVer  = $('bm-host-osver').value.trim();
-    const model  = $('bm-model').value.trim() || 'stub-echo';
+    const model  = $('bm-model').value.trim() || DEFAULT_MODEL;
     const ramTh  = parseFloat($('bm-ram-th').value)  || 8;
     const diskTh = parseFloat($('bm-disk-th').value) || 10;
     const budget = parseInt($('bm-budget').value, 10) || 5000;
@@ -1632,6 +1683,7 @@
     loadBenchmarkChecklist();
   });
   $('bm-history').addEventListener('click', loadBenchmarkHistory);
+
 })();
 </script>
 </body>

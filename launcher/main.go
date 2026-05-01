@@ -127,6 +127,30 @@ func runCmdStream(dir, name string, args ...string) error {
 	return cmd.Run()
 }
 
+func waitForDockerDaemon(timeout, interval time.Duration, showProgress bool) bool {
+	if interval <= 0 {
+		interval = time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if _, err := runCmd("", "docker", "info"); err == nil {
+			if showProgress {
+				fmt.Println()
+			}
+			ok("Docker 데몬 응답 확인")
+			return true
+		}
+		if time.Now().Add(interval).After(deadline) {
+			break
+		}
+		if showProgress {
+			fmt.Print(".")
+		}
+		time.Sleep(interval)
+	}
+	return false
+}
+
 // ----------------------------- 사전 점검 -----------------------------
 
 func checkDockerInstalled() {
@@ -177,13 +201,8 @@ func checkDockerRunning() {
 		warn("Docker 데몬에 연결할 수 없습니다. Docker Desktop 을 자동으로 실행합니다...")
 		if tryStartDockerDesktop() {
 			info("Docker 데몬 기동 대기 중 (최대 90초)...")
-			deadline := time.Now().Add(90 * time.Second)
-			for time.Now().Before(deadline) {
-				time.Sleep(3 * time.Second)
-				if _, err := runCmd("", "docker", "info"); err == nil {
-					ok("Docker 데몬 응답 확인")
-					return
-				}
+			if waitForDockerDaemon(90*time.Second, time.Second, false) {
+				return
 			}
 		}
 		errf("Docker 데몬이 아직 준비되지 않았습니다.")
@@ -612,7 +631,7 @@ func waitForHealth(root string, composeCmd []string) (webPort int) {
 		if backendOK && webOK {
 			return webPort
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(750 * time.Millisecond)
 	}
 	errf("서비스가 제한 시간 내에 준비되지 않았습니다 (backend=%v, web-ui=%v)", backendOK, webOK)
 	showLogs(root, composeCmd)
@@ -911,16 +930,9 @@ func startDockerDesktopAndWait(timeout time.Duration) bool {
 		warn("Docker Desktop.exe 자동 실행 실패")
 	}
 	info("Docker 데몬 기동 대기 중 (최대 %s)...", timeout)
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		time.Sleep(5 * time.Second)
-		if _, err := runCmd("", "docker", "info"); err == nil {
-			ok("Docker 데몬 응답 확인")
-			return true
-		}
-		fmt.Print(".")
+	if waitForDockerDaemon(timeout, time.Second, true) {
+		return true
 	}
-	fmt.Println()
 	errf("Docker 데몬이 시간 안에 기동되지 않았습니다.")
 	return false
 }

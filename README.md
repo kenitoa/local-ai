@@ -31,6 +31,7 @@
 | embedding-server | `8003` |
 | language-worker | `8004` |
 | hardware-detector | `8005` |
+| qdrant (Vector DB) | `6333` / `6334` |
 | mysql | `3306` |
 
 ---
@@ -347,10 +348,23 @@ LLM 입력으로 전달
 
 | 단계 | 컴포넌트 | 산출물 |
 |---|---|---|
-| 영역 탐지 | `vision-server._detect_code_regions` (현재 stub-fullframe) | `vlm_pipeline_runs.detected_regions` |
-| 텍스트화 | `vision-server._run_ocr` (현재 stub) | `vlm_pipeline_runs.extracted_text` |
+| 영역 탐지 | `vision-server._detect_code_regions` (OpenCV text block, 실패 시 full frame) | `vlm_pipeline_runs.detected_regions` |
+| 텍스트화 | `vision-server._run_ocr` (로컬 TrOCR/VLM → Tesseract → metadata fallback) | `vlm_pipeline_runs.extracted_text` |
 | 파일 저장 | `backend.storage.save_vlm_pipeline_text` | `data/vlm_training/pipeline_output/` + `image_data.code_file_path` |
 | LLM 전달 | `backend._generate_with_model` | `model_answers` + `vlm_pipeline_runs.llm_answer_id` |
+
+### 11.4.1 OCR/VLM 설정
+
+- 기본 OCR은 컨테이너 내부 Tesseract(`kor+eng`)를 사용한다.
+- `VISION_VLM_MODEL_PATH=/app/models/vision/<model>` 을 지정하면 로컬 TrOCR/VLM 모델을 먼저 시도한다.
+- `OCR_ENGINE=auto|vlm|tesseract|stub`, `OCR_LANGS`, `OCR_TESSERACT_CONFIG` 로 동작을 조정한다.
+- 모델/바이너리가 없거나 추출 텍스트가 비어 있을 때만 metadata fallback 응답을 반환한다.
+
+### 13.1 Vector DB / ANN 검색
+
+임베딩은 MySQL 메타데이터와 파일 저장을 유지하면서 Qdrant에도 point로 동기화된다.
+`POST /api/embeddings/search` 는 Qdrant ANN 검색을 먼저 사용하고, Qdrant가 비활성/미응답이면 기존 MySQL cosine 검색으로 폴백한다.
+컬렉션은 벡터 차원별로 `localai_embeddings_<dim>d` 형식으로 자동 생성된다.
 
 ### 11.5 추가된 데이터베이스 스키마
 
@@ -802,7 +816,7 @@ curl -X POST http://localhost:8000/api/benchmark/run \
         "perf_budget_ms": 5000
       }'
 
-# 2) 특정 항목만 건너뛰기 (예: 이미지 처리는 vision-server 가 placeholder 라 스킵)
+# 2) 특정 항목만 건너뛰기 (예: 이미지 성능 측정을 잠시 제외)
 curl -X POST http://localhost:8000/api/benchmark/run \
   -H 'content-type: application/json' \
   -d '{"skip_items": ["image_speed", "spec_image_input"]}'

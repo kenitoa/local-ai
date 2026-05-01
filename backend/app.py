@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import json
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Optional
 
@@ -79,6 +81,7 @@ app.add_middleware(
 #     CORS preflight (OPTIONS).
 # ---------------------------------------------------------------------------
 BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "").strip()
+MODEL_SERVER_GENERATE_TIMEOUT_SEC = int(os.getenv("MODEL_SERVER_GENERATE_TIMEOUT_SEC", "180"))
 _AUTH_EXEMPT_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json", "/favicon.ico"}
 
 if not BACKEND_API_KEY:
@@ -447,7 +450,7 @@ def create_embedding(payload: EmbeddingIn):
         model_name=payload.model_name,
     )
     norm = sum(x * x for x in payload.vector) ** 0.5
-    emb_id = db.execute(
+    db.execute(
         """
         INSERT INTO embeddings
             (target_type, target_id, model_name, dim, vector_file_path,
@@ -464,6 +467,17 @@ def create_embedding(payload: EmbeddingIn):
         (payload.target_type, payload.target_id, payload.model_name, len(payload.vector),
          s.rel_path, json.dumps(payload.vector), s.size, s.sha256, norm, payload.content_hash),
     )
+    emb_id = _embedding_row_id(payload.target_type, payload.target_id, payload.model_name)
+    if emb_id:
+        _vector_db_upsert(
+            embedding_id=emb_id,
+            target_type=payload.target_type,
+            target_id=payload.target_id,
+            vector=[float(x) for x in payload.vector],
+            model_name=payload.model_name,
+            model_version=payload.model_name,
+            content_hash=payload.content_hash,
+        )
     return {"embedding_id": emb_id, **s.as_dict()}
 
 
@@ -848,11 +862,81 @@ def _resolve_training_python() -> str:
     return os.environ.get("PYTHON_BIN") or _sys.executable or "python"
 
 
+def _checkpoint_label_for_run(run_id: int) -> str:
+    return f"self/run-{run_id}"
+
+
+def _repo_abspath(path: str) -> str:
+    if os.path.isabs(path):
+        return path
+    return os.path.join(REPO_ROOT_DIR, path.replace("/", os.sep))
+
+
+def _activate_completed_training_run(run_row: dict[str, Any]) -> dict[str, Any]:
+    if not run_row:
+        raise HTTPException(404, "training run not found")
+    if run_row.get("status") != "done":
+        raise HTTPException(409, f"training run #{run_row.get('id')} is not done")
+
+    checkpoint_path = (run_row.get("checkpoint_path") or "").strip()
+    if not checkpoint_path:
+        raise HTTPException(409, "training run has no checkpoint_path")
+
+    checkpoint_abs = _repo_abspath(checkpoint_path)
+    if not os.path.isdir(checkpoint_abs):
+        raise HTTPException(409, f"checkpoint directory not found: {checkpoint_abs}")
+
+    config_path = os.path.join(checkpoint_abs, "config.json")
+    adapter_config_path = os.path.join(checkpoint_abs, "adapter_config.json")
+    payload = {
+        "checkpoint": _checkpoint_label_for_run(int(run_row["id"])),
+        "checkpoint_path": checkpoint_abs if os.path.isfile(config_path) else None,
+        "adapter_path": checkpoint_abs if os.path.isfile(adapter_config_path) else None,
+        "use_latest": False,
+    }
+    if payload["checkpoint_path"] is None and payload["adapter_path"] is None:
+        raise HTTPException(
+            409,
+            f"checkpoint {checkpoint_abs} is neither a full model nor a PEFT adapter",
+        )
+
+    activated = _http_post_json(f"{MODEL_SERVER_URL}/api/v1/runtime/activate-adapter", payload, timeout=60)
+    if not activated:
+        raise HTTPException(502, "model-server activation failed")
+
+    return {
+        "run_id": run_row["id"],
+        "checkpoint": payload["checkpoint"],
+        "checkpoint_path": checkpoint_path,
+        "engine": activated.get("engine"),
+        "runtime": activated,
+    }
+
+
+def _wait_for_training_run(run_id: int, *, timeout_seconds: int, poll_seconds: float) -> dict[str, Any]:
+    deadline = time.monotonic() + max(1, timeout_seconds)
+    interval = max(0.2, poll_seconds)
+    last_row: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last_row = db.fetch_one("SELECT * FROM llm_training_runs WHERE id=%s", (run_id,))
+        if last_row and last_row.get("status") in ("done", "failed"):
+            return last_row
+        time.sleep(interval)
+
+    if last_row is None:
+        raise HTTPException(404, f"training run #{run_id} not found")
+    raise HTTPException(504, f"training run #{run_id} did not finish within timeout")
+
+
 @app.post("/api/v1/training/run")
 def training_run(
     run_name: str | None = Query(default=None, description="자유 식별자, 미지정 시 자동"),
     max_samples: int = Query(default=5000, ge=1, le=200000),
     dry_run: bool = Query(default=False, description="데이터셋만 만들고 학습은 spawn 안 함"),
+    wait: bool = Query(default=False, description="spawn 후 완료까지 동기 대기"),
+    activate_on_finish: bool = Query(default=False, description="완료 시 model-server 에 즉시 반영"),
+    wait_timeout_seconds: int = Query(default=7200, ge=1, le=86400),
+    poll_seconds: float = Query(default=2.0, ge=0.2, le=30.0),
 ):
     plan = db.fetch_one("SELECT * FROM model_plans ORDER BY id DESC LIMIT 1")
     if not plan:
@@ -980,7 +1064,7 @@ def training_run(
         close_fds=(os.name != "nt"),
     )
 
-    return {
+    response = {
         "run_id":   run_id,
         "run_name": run_label,
         "base_id":  base_id,
@@ -991,6 +1075,21 @@ def training_run(
         "log":      log_path,
         "hyperparams": hyperparams,
     }
+
+    if wait:
+        final_row = _wait_for_training_run(
+            run_id,
+            timeout_seconds=wait_timeout_seconds,
+            poll_seconds=poll_seconds,
+        )
+        response["final_status"] = final_row.get("status")
+        response["finished_at"] = final_row.get("finished_at")
+        response["checkpoint_path"] = final_row.get("checkpoint_path")
+        response["metrics"] = final_row.get("metrics_json")
+        if activate_on_finish and final_row.get("status") == "done":
+            response["activation"] = _activate_completed_training_run(final_row)
+
+    return response
 
 
 @app.get("/api/v1/training/runs")
@@ -1012,6 +1111,12 @@ def training_run_detail(run_id: int):
     return row
 
 
+@app.post("/api/v1/training/runs/{run_id}/activate")
+def training_run_activate(run_id: int):
+    row = db.fetch_one("SELECT * FROM llm_training_runs WHERE id=%s", (run_id,))
+    return _activate_completed_training_run(row)
+
+
 # ---------------------------------------------------------------------------
 # Step 7: Web UI 지원 엔드포인트
 #  - 저장된 답변 검색/조회
@@ -1024,6 +1129,7 @@ SERVICE_PROBES: list[tuple[str, str]] = [
     ("model-server",       os.getenv("MODEL_SERVER_URL", "http://model-server:8001") + "/health"),
     ("vision-server",      os.getenv("VISION_SERVER_URL", "http://vision-server:8002") + "/health"),
     ("embedding-server",   os.getenv("EMBEDDING_SERVER_URL", "http://embedding-server:8003") + "/health"),
+    ("vector-db",          os.getenv("VECTOR_DB_URL", "http://qdrant:6333") + "/readyz"),
     ("language-worker",    os.getenv("LANGUAGE_WORKER_URL", "http://language-worker:8004") + "/health"),
     ("hardware-detector",  os.getenv("HARDWARE_DETECTOR_URL", "http://hardware-detector:8005") + "/health"),
 ]
@@ -1049,12 +1155,23 @@ def _probe_service(url: str, timeout: float = 1.5) -> dict[str, Any]:
 @app.get("/api/v1/system/services")
 def system_services():
     """모든 백엔드 서비스의 /health 를 호출해서 상태를 묶어 반환."""
-    services = []
-    for name, url in SERVICE_PROBES:
-        info = _probe_service(url)
-        info["name"] = name
-        info["url"] = url
-        services.append(info)
+    services_by_name: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=max(1, len(SERVICE_PROBES))) as pool:
+        futures = {
+            pool.submit(_probe_service, url): (name, url)
+            for name, url in SERVICE_PROBES
+        }
+        for future in as_completed(futures):
+            name, url = futures[future]
+            try:
+                info = future.result()
+            except Exception as exc:  # noqa: BLE001
+                info = {"status": "down", "error": str(exc)}
+            info["name"] = name
+            info["url"] = url
+            services_by_name[name] = info
+
+    services = [services_by_name[name] for name, _ in SERVICE_PROBES]
 
     # MySQL 상태
     services.append({
@@ -1193,7 +1310,7 @@ def _try_call_model_server(prompt: str, model_name: str) -> tuple[str, dict[str,
     body = json.dumps({"prompt": prompt, "model": model_name}).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=MODEL_SERVER_GENERATE_TIMEOUT_SEC) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         text = data.get("text") or data.get("answer") or json.dumps(data, ensure_ascii=False)
         return text, data
@@ -1339,6 +1456,9 @@ MODEL_SERVER_URL     = os.getenv("MODEL_SERVER_URL",     "http://model-server:80
 VISION_SERVER_URL    = os.getenv("VISION_SERVER_URL",    "http://vision-server:8002").rstrip("/")
 EMBEDDING_SERVER_URL = os.getenv("EMBEDDING_SERVER_URL", "http://embedding-server:8003").rstrip("/")
 LANGUAGE_WORKER_URL  = os.getenv("LANGUAGE_WORKER_URL",  "http://language-worker:8004").rstrip("/")
+VECTOR_DB_URL        = os.getenv("VECTOR_DB_URL",        "http://qdrant:6333").rstrip("/")
+VECTOR_DB_COLLECTION = os.getenv("VECTOR_DB_COLLECTION", "localai_embeddings").strip() or "localai_embeddings"
+VECTOR_DB_ENABLED    = os.getenv("VECTOR_DB_ENABLED", "1").lower() not in ("0", "false", "no")
 
 
 def _http_post_json(url: str, payload: dict[str, Any], timeout: float = 30.0) -> dict[str, Any] | None:
@@ -1354,6 +1474,23 @@ def _http_post_json(url: str, payload: dict[str, Any], timeout: float = 30.0) ->
             return json.loads(resp.read().decode("utf-8"))
     except Exception as exc:  # noqa: BLE001
         log.info("worker call failed url=%s err=%s", url, exc)
+        return None
+
+
+def _http_put_json(url: str, payload: dict[str, Any], timeout: float = 15.0) -> dict[str, Any] | None:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="PUT",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {"status": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        log.info("worker put failed url=%s err=%s", url, exc)
         return None
 
 
@@ -1405,7 +1542,7 @@ def _store_embedding_from_worker(emb: dict[str, Any], *, target_type: str, targe
         model_name=model_name,
     )
     norm = sum(x * x for x in vector) ** 0.5
-    return db.execute(
+    db.execute(
         """
         INSERT INTO embeddings
             (target_type, target_id, model_name, dim, vector_file_path,
@@ -1424,6 +1561,18 @@ def _store_embedding_from_worker(emb: dict[str, Any], *, target_type: str, targe
          saved.rel_path, json.dumps(vector), saved.size, saved.sha256, norm,
          emb.get("content_hash")),
     )
+    embedding_id = _embedding_row_id(target_type, target_id, model_name)
+    if embedding_id:
+        _vector_db_upsert(
+            embedding_id=embedding_id,
+            target_type=target_type,
+            target_id=target_id,
+            vector=vector,
+            model_name=model_name,
+            model_version=model_name,
+            content_hash=emb.get("content_hash"),
+        )
+    return embedding_id
 
 
 # --- GET /api/health -------------------------------------------------------
@@ -2875,12 +3024,30 @@ def _proxy_llm(endpoint_path: str, body: dict[str, Any]) -> dict[str, Any] | Non
     )
 
 
+def _http_get_json(url: str, timeout: float = 15.0) -> dict[str, Any] | None:
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        log.info("worker get failed url=%s err=%s", url, exc)
+        return None
+
+
 class LlmGenerateProxyIn(BaseModel):
     requirement: Optional[str] = None
     input_code: Optional[str] = None
     language: Optional[str] = None
     library: Optional[str] = None
     model: Optional[str] = None
+
+
+@app.get("/api/v1/model/runtime")
+def model_runtime():
+    res = _http_get_json(f"{MODEL_SERVER_URL}/api/v1/runtime", timeout=15)
+    if not res:
+        raise HTTPException(502, "model-server runtime unavailable")
+    return res
 
 
 @app.post("/api/llm/generate")
@@ -3142,6 +3309,145 @@ def _cosine(a: list[float], b: list[float],
     return dot / (na * nb)
 
 
+def _vector_collection(dim: int) -> str:
+    return f"{VECTOR_DB_COLLECTION}_{dim}d"
+
+
+def _embedding_row_id(target_type: str, target_id: int, model_name: str) -> int | None:
+    row = db.fetch_one(
+        """
+        SELECT id FROM embeddings
+         WHERE target_type=%s AND target_id=%s AND model_name=%s
+         ORDER BY id DESC LIMIT 1
+        """,
+        (target_type, target_id, model_name),
+    )
+    return int(row["id"]) if row and row.get("id") is not None else None
+
+
+def _vector_db_ensure_collection(dim: int) -> bool:
+    if not VECTOR_DB_ENABLED:
+        return False
+    collection = _vector_collection(dim)
+    existing = _http_get_json(f"{VECTOR_DB_URL}/collections/{collection}", timeout=5)
+    if existing:
+        return True
+    payload = {"vectors": {"size": dim, "distance": "Cosine"}}
+    res = _http_put_json(f"{VECTOR_DB_URL}/collections/{collection}", payload, timeout=10)
+    return bool(res)
+
+
+def _vector_db_upsert(
+    *,
+    embedding_id: int,
+    target_type: str,
+    target_id: int,
+    vector: list[float],
+    model_name: str,
+    model_version: str | None,
+    content_hash: str | None,
+) -> bool:
+    if not VECTOR_DB_ENABLED or not vector:
+        return False
+    dim = len(vector)
+    if not _vector_db_ensure_collection(dim):
+        return False
+    point = {
+        "id": int(embedding_id),
+        "vector": vector,
+        "payload": {
+            "embedding_id": int(embedding_id),
+            "target_type": target_type,
+            "target_id": int(target_id),
+            "model_name": model_name,
+            "model_version": model_version or model_name,
+            "dim": dim,
+            "content_hash": content_hash,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        },
+    }
+    res = _http_put_json(
+        f"{VECTOR_DB_URL}/collections/{_vector_collection(dim)}/points?wait=true",
+        {"points": [point]},
+        timeout=15,
+    )
+    return bool(res)
+
+
+def _vector_db_search(
+    payload: "EmbeddingSearchIn",
+    *,
+    qvec: list[float],
+    qmodel: str,
+    query_hash: str | None,
+    query_text: str | None,
+) -> dict[str, Any] | None:
+    if not VECTOR_DB_ENABLED or not qvec:
+        return None
+
+    limit = max(1, payload.top_k)
+    overfetch = max(limit * 8, 32)
+    must: list[dict[str, Any]] = [{"key": "model_name", "match": {"value": qmodel}}]
+    if payload.target_types:
+        must.append({"key": "target_type", "match": {"any": payload.target_types}})
+    excl = payload.exclude_target or {}
+    excl_type = excl.get("target_type") if isinstance(excl, dict) else None
+    excl_id = excl.get("target_id") if isinstance(excl, dict) else None
+    body = {
+        "vector": qvec,
+        "limit": overfetch,
+        "with_payload": True,
+        "filter": {"must": must},
+    }
+    if payload.threshold > -1.0:
+        body["score_threshold"] = payload.threshold
+
+    res = _http_post_json(
+        f"{VECTOR_DB_URL}/collections/{_vector_collection(len(qvec))}/points/search",
+        body,
+        timeout=15,
+    )
+    if not res or not isinstance(res.get("result"), list):
+        return None
+
+    target_types = set(payload.target_types or [])
+
+    items: list[dict[str, Any]] = []
+    for point in res["result"]:
+        meta = point.get("payload") or {}
+        if target_types and meta.get("target_type") not in target_types:
+            continue
+        if excl_type and meta.get("target_type") == excl_type and meta.get("target_id") == excl_id:
+            continue
+        score = float(point.get("score") or 0.0)
+        if score < payload.threshold:
+            continue
+        items.append({
+            "embedding_id": meta.get("embedding_id") or point.get("id"),
+            "target_type": meta.get("target_type"),
+            "target_id": meta.get("target_id"),
+            "model_version": meta.get("model_version") or meta.get("model_name"),
+            "vector_dim": meta.get("dim") or len(qvec),
+            "similarity": round(score, 6),
+            "content_hash": meta.get("content_hash"),
+            "created_at": meta.get("updated_at"),
+        })
+        if len(items) >= limit:
+            break
+
+    return {
+        "query_model": qmodel,
+        "query_dim": len(qvec),
+        "query_hash": query_hash or (
+            _hashlib.sha256(query_text.encode("utf-8")).hexdigest()
+            if query_text else None
+        ),
+        "search_engine": "qdrant",
+        "candidates_scanned": len(res["result"]),
+        "items": items,
+    }
+
+
 def _store_embedding_row(
     *,
     target_type: str,
@@ -3159,7 +3465,7 @@ def _store_embedding_row(
         model_name=model_name,
     )
     norm = _math.sqrt(sum(x * x for x in vector))
-    return db.execute(
+    db.execute(
         """
         INSERT INTO embeddings
             (target_type, target_id, model_name, model_version, dim,
@@ -3181,6 +3487,19 @@ def _store_embedding_row(
          saved.rel_path, json.dumps(vector), saved.size, saved.sha256, norm,
          content_hash, content_hash),
     )
+    embedding_id = _embedding_row_id(target_type, target_id, model_name)
+    if embedding_id:
+        _vector_db_upsert(
+            embedding_id=embedding_id,
+            target_type=target_type,
+            target_id=target_id,
+            vector=vector,
+            model_name=model_name,
+            model_version=model_version or model_name,
+            content_hash=content_hash,
+        )
+        return embedding_id
+    return 0
 
 
 # --- GET /api/embeddings/targets ------------------------------------------
@@ -3242,6 +3561,9 @@ class EmbeddingSearchIn(BaseModel):
     target_id: Optional[int] = None
     target_types: Optional[list[str]] = None  # 검색 대상 풀 (없으면 전체)
     model: Optional[str] = None
+    query_vector: Optional[list[float]] = None
+    query_model: Optional[str] = None
+    query_hash: Optional[str] = None
     top_k: int = 5
     threshold: float = 0.0
     exclude_target: Optional[dict[str, int]] = None  # 자기 자신 제외
@@ -3255,25 +3577,45 @@ def api_embeddings_search(payload: EmbeddingSearchIn):
     2) 같은 model 의 저장 임베딩들과 코사인 유사도 계산.
     3) threshold 이상인 상위 top_k 결과를 반환.
     """
-    if not payload.text and not (payload.target_type and payload.target_id):
-        raise HTTPException(400, "text 또는 (target_type,target_id) 중 하나가 필요합니다")
+    if not payload.query_vector and not payload.text and not (payload.target_type and payload.target_id):
+        raise HTTPException(400, "query_vector, text 또는 (target_type,target_id) 중 하나가 필요합니다")
 
     query_text = payload.text
-    if not query_text:
-        query_text = _load_target_text(payload.target_type or "", payload.target_id or 0)
-    if not query_text or not query_text.strip():
-        raise HTTPException(404, "검색 입력 텍스트를 찾지 못했습니다")
+    if payload.query_vector:
+        try:
+            qvec = [float(x) for x in payload.query_vector]
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, f"invalid query_vector: {exc}") from exc
+        qmodel = payload.query_model or payload.model or "stub-hash"
+        query_hash = payload.query_hash
+    else:
+        if not query_text:
+            query_text = _load_target_text(payload.target_type or "", payload.target_id or 0)
+        if not query_text or not query_text.strip():
+            raise HTTPException(404, "검색 입력 텍스트를 찾지 못했습니다")
 
-    emb = _embed_text(query_text, model=payload.model)
-    if not emb or not isinstance(emb.get("vector"), list):
-        raise HTTPException(503, "embedding-server unavailable")
-    qvec = [float(x) for x in emb["vector"]]
+        emb = _embed_text(query_text, model=payload.model)
+        if not emb or not isinstance(emb.get("vector"), list):
+            raise HTTPException(503, "embedding-server unavailable")
+        qvec = [float(x) for x in emb["vector"]]
+        qmodel = emb.get("model") or (payload.model or "stub-hash")
+        query_hash = emb.get("content_hash") or _hashlib.sha256(query_text.encode("utf-8")).hexdigest()
+
+    if not qvec:
+        raise HTTPException(400, "query vector is empty")
     qnorm = _math.sqrt(sum(x * x for x in qvec))
-    qmodel = emb.get("model") or (payload.model or "stub-hash")
+
+    vector_db_res = _vector_db_search(
+        payload,
+        qvec=qvec,
+        qmodel=qmodel,
+        query_hash=query_hash,
+        query_text=query_text,
+    )
 
     # 같은 model 의 임베딩만 대상으로 (차원 호환 보장)
-    where = ["e.model_name = %s OR e.model_version = %s"]
-    args: list[Any] = [qmodel, qmodel]
+    where = ["(e.model_name = %s OR e.model_version = %s)", "e.dim = %s"]
+    args: list[Any] = [qmodel, qmodel, len(qvec)]
     if payload.target_types:
         placeholders = ",".join(["%s"] * len(payload.target_types))
         where.append(f"e.target_type IN ({placeholders})")
@@ -3315,12 +3657,53 @@ def api_embeddings_search(payload: EmbeddingSearchIn):
             "content_hash": r.get("content_hash"),
             "created_at": r.get("created_at"),
         })
+        if VECTOR_DB_ENABLED:
+            try:
+                _vector_db_upsert(
+                    embedding_id=int(r["embedding_id"]),
+                    target_type=str(r["target_type"]),
+                    target_id=int(r["target_id"]),
+                    vector=vec,
+                    model_name=str(r.get("model_name") or qmodel),
+                    model_version=str(r.get("model_version") or r.get("model_name") or qmodel),
+                    content_hash=r.get("content_hash"),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.info("vector db lazy backfill skipped embedding_id=%s err=%s", r.get("embedding_id"), exc)
+
+    if vector_db_res is not None:
+        merged: dict[Any, dict[str, Any]] = {}
+        for item in vector_db_res.get("items", []) + results:
+            key = item.get("embedding_id") or (item.get("target_type"), item.get("target_id"))
+            current = merged.get(key)
+            if current is None or float(item.get("similarity") or 0.0) > float(current.get("similarity") or 0.0):
+                merged[key] = item
+        merged_items = sorted(
+            merged.values(),
+            key=lambda x: float(x.get("similarity") or 0.0),
+            reverse=True,
+        )[: max(1, payload.top_k)]
+        return {
+            "query_model": qmodel,
+            "query_dim": len(qvec),
+            "query_hash": query_hash or (
+                _hashlib.sha256(query_text.encode("utf-8")).hexdigest()
+                if query_text else None
+            ),
+            "search_engine": "qdrant+mysql-cosine-fallback",
+            "candidates_scanned": (vector_db_res.get("candidates_scanned") or 0) + len(rows),
+            "items": merged_items,
+        }
 
     results.sort(key=lambda x: x["similarity"], reverse=True)
     return {
         "query_model": qmodel,
         "query_dim": len(qvec),
-        "query_hash": _hashlib.sha256(query_text.encode("utf-8")).hexdigest(),
+        "query_hash": query_hash or (
+            _hashlib.sha256(query_text.encode("utf-8")).hexdigest()
+            if query_text else None
+        ),
+        "search_engine": "mysql-cosine-fallback",
         "candidates_scanned": len(rows),
         "items": results[: max(1, payload.top_k)],
     }
@@ -3524,17 +3907,25 @@ def api_reuse_find_similar(payload: ReuseFindSimilarIn):
         "top_k": payload.top_k,
         "groups": {},
     }
+    emb = _embed_text(text, model=payload.model)
+    if not emb or not isinstance(emb.get("vector"), list):
+        raise HTTPException(503, "embedding-server unavailable")
+    qvec = [float(x) for x in emb["vector"]]
+    qmodel = emb.get("model") or (payload.model or "stub-hash")
+    qhash = emb.get("content_hash") or out["query_hash"]
+
     for label, types in active_groups.items():
         if not types:
             out["groups"][label] = {"items": [], "candidates_scanned": 0}
             continue
-        res = _reuse_search_category(
-            text,
+        res = api_embeddings_search(EmbeddingSearchIn(
+            query_vector=qvec,
+            query_model=qmodel,
+            query_hash=qhash,
             target_types=types,
-            model=payload.model,
             top_k=payload.top_k,
             threshold=payload.threshold,
-        )
+        ))
         out["groups"][label] = {
             "target_types": types,
             "items": res.get("items", []),
@@ -3641,9 +4032,10 @@ def api_reuse_answer(payload: ReuseAnswerPipelineIn):
 
     # ---- 3) 유사 답변 검색 ----
     search_res = api_embeddings_search(EmbeddingSearchIn(
-        text=query_text,
+        query_vector=qvec,
+        query_model=qmodel,
+        query_hash=query_hash,
         target_types=["model_answer"],
-        model=payload.embedding_model,
         top_k=payload.top_k,
         threshold=payload.threshold,
     ))
@@ -3658,9 +4050,10 @@ def api_reuse_answer(payload: ReuseAnswerPipelineIn):
     ):
         try:
             r = api_embeddings_search(EmbeddingSearchIn(
-                text=query_text,
+                query_vector=qvec,
+                query_model=qmodel,
+                query_hash=query_hash,
                 target_types=types,
-                model=payload.embedding_model,
                 top_k=payload.top_k,
                 threshold=max(0.0, payload.threshold - 0.1),
             ))
@@ -5227,7 +5620,7 @@ def api_integration_run(payload: IntegrationRunIn):
         try:
             reuse_res = api_reuse_answer(ReuseAnswerPipelineIn(
                 requirement=requirement, code=code, code_language=code_language,
-                model=model_name, top_k=5, threshold=0.0,  # threshold 0: 무조건 후보 사용
+                model=model_name, top_k=5, threshold=-1.0,  # include stub-hash negative cosine candidates
                 adapt=True, record=True,
                 user_tag=f"integration-run-{run_id}-replay",
             ))
@@ -5349,12 +5742,11 @@ def api_integration_run(payload: IntegrationRunIn):
                                       "confidence": extraction.get("confidence"),
                                       "preview": (extracted_code or "")[:200]})
                 else:
-                    # vision-server 가 placeholder 라 실제 추출은 못하지만,
-                    # 응답이라도 받으면 결선은 OK 로 본다.
+                    # 실제 OCR 결과가 비어도 서비스 결선/메타 응답은 검증한다.
                     if extraction is not None:
                         extracted_code = extraction.get("code") or ""
                         _record(spec11, status="passed", latency_ms=ms,
-                                message="vision-server placeholder 응답 (실제 OCR 미설치)",
+                                message=f"vision-server 응답: engine={extraction.get('engine') or '-'}, 추출 텍스트 없음",
                                 evidence={"image_id": img_id,
                                           "vision_response": extraction})
                     else:
@@ -5972,7 +6364,7 @@ def api_benchmark_run(payload: BenchmarkRunIn):
     try:
         reuse_res = api_reuse_answer(ReuseAnswerPipelineIn(
             requirement=sample_requirement, code=sample_code, code_language="python",
-            model=model_name, top_k=5, threshold=0.0,
+            model=model_name, top_k=5, threshold=-1.0,
             adapt=True, record=True,
             user_tag=f"benchmark-run-{run_id}-reuse",
         ))
@@ -6167,7 +6559,7 @@ def api_benchmark_run(payload: BenchmarkRunIn):
     t0 = datetime.utcnow()
     try:
         sim_res = api_reuse_find_similar(ReuseFindSimilarIn(
-            text=sample_requirement, top_k=5, threshold=0.0,
+            text=sample_requirement, top_k=5, threshold=-1.0,
         ))
         ms = int((datetime.utcnow() - t0).total_seconds() * 1000)
         # 응답에 hit 수 추출

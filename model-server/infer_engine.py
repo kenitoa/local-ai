@@ -51,6 +51,7 @@ _engine_state: dict[str, Any] = {
 _model = None       # transformers PreTrainedModel
 _tokenizer = None
 _torch = None       # 모듈 핸들 (지연 import)
+_loaded_signature: tuple[str | None, str | None, str, int, int] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +84,17 @@ def _resolve_base_path(bootstrap_base_id: str | None) -> Path | None:
     return None
 
 
+def _resolve_checkpoint_path(checkpoint_path: str | None) -> Path | None:
+    if not checkpoint_path:
+        return None
+    candidate = Path(checkpoint_path)
+    if not candidate.is_absolute():
+        candidate = (MODELS_DIR / checkpoint_path).resolve()
+    if candidate.is_dir() and (candidate / "config.json").is_file():
+        return candidate
+    return None
+
+
 def _resolve_latest_adapter() -> Path | None:
     """``models/local/runs/`` 아래에서 가장 최근 PEFT 어댑터 디렉터리."""
     if not RUNS_DIR.is_dir():
@@ -97,6 +109,21 @@ def _resolve_latest_adapter() -> Path | None:
     return candidates[0]
 
 
+def _resolve_adapter_path(adapter_path: str | None) -> Path | None:
+    """명시적 adapter 경로가 있으면 우선 사용, 없으면 최신 어댑터 선택."""
+    if adapter_path is None:
+        return _resolve_latest_adapter()
+    if not adapter_path.strip():
+        return None
+
+    candidate = Path(adapter_path)
+    if not candidate.is_absolute():
+        candidate = (MODELS_DIR / candidate).resolve()
+    if candidate.is_dir() and (candidate / "adapter_config.json").is_file():
+        return candidate
+    return None
+
+
 # ---------------------------------------------------------------------------
 # 로드
 # ---------------------------------------------------------------------------
@@ -105,19 +132,41 @@ def load_from_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
 
     실패해도 예외를 올리지 않고 _engine_state.reason 에 기록만 한다.
     """
-    global _model, _tokenizer, _torch
+    global _model, _tokenizer, _torch, _loaded_signature
     bootstrap_base_id = runtime.get("bootstrap_base")
+    requested_checkpoint = runtime.get("checkpoint_path")
     device_pref = (runtime.get("device") or "cpu").lower()
     n_ctx = int(runtime.get("n_ctx") or 2048)
     n_threads = int(runtime.get("n_threads") or 2)
 
     # 1) 베이스 경로 확인
-    base_path = _resolve_base_path(bootstrap_base_id)
+    base_path = _resolve_checkpoint_path(requested_checkpoint) or _resolve_base_path(bootstrap_base_id)
     if base_path is None:
         return _set_unavailable(
-            f"cold-start base not found under {BASE_DIR} "
+            f"checkpoint/base not found (requested={requested_checkpoint!r}, base_dir={BASE_DIR}) "
             f"(run scripts/bootstrap_cold_start.py)"
         )
+
+    requested_adapter = runtime.get("adapter_path")
+    adapter_path = _resolve_adapter_path(requested_adapter)
+    if requested_adapter and adapter_path is None:
+        return _set_unavailable(f"requested adapter not found: {requested_adapter}")
+
+    signature = (
+        str(base_path),
+        str(adapter_path) if adapter_path else None,
+        device_pref,
+        n_ctx,
+        n_threads,
+    )
+    with _lock:
+        if (
+            _engine_state.get("available") is True
+            and _model is not None
+            and _tokenizer is not None
+            and _loaded_signature == signature
+        ):
+            return dict(_engine_state)
 
     # 2) 무거운 의존성 import (없으면 stub 모드 유지)
     try:
@@ -163,7 +212,6 @@ def load_from_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
         return _set_unavailable(f"failed to load base from {base_path}: {exc}")
 
     # 5) (선택) 최신 LoRA 어댑터 적용
-    adapter_path = _resolve_latest_adapter()
     if adapter_path is not None:
         try:
             from peft import PeftModel  # type: ignore
@@ -185,6 +233,7 @@ def load_from_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
     with _lock:
         _model = model
         _tokenizer = tokenizer
+        _loaded_signature = signature
         _engine_state.update({
             "available":     True,
             "reason":        "loaded",
@@ -201,10 +250,11 @@ def load_from_runtime(runtime: dict[str, Any]) -> dict[str, Any]:
 
 
 def unload() -> None:
-    global _model, _tokenizer
+    global _model, _tokenizer, _loaded_signature
     with _lock:
         _model = None
         _tokenizer = None
+        _loaded_signature = None
         _engine_state.update({"available": False, "reason": "unloaded"})
     if _torch is not None:
         try:
@@ -279,8 +329,10 @@ def _utcnow_iso() -> str:
 
 
 def _set_unavailable(reason: str) -> dict[str, Any]:
+    global _loaded_signature
     log.info("inference engine unavailable: %s", reason)
     with _lock:
+        _loaded_signature = None
         _engine_state.update({
             "available": False,
             "reason":    reason,
