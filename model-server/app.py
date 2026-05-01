@@ -323,7 +323,7 @@ class GenerateIn(BaseModel):
     prompt: str
     model: str | None = None
     language: str | None = None
-    max_tokens: int | None = 512
+    max_tokens: int | None = None
     temperature: float | None = 0.2
     task: str | None = None  # infer / optimize
 
@@ -342,7 +342,8 @@ def generate(payload: GenerateIn):
     lang = payload.language or "plain"
     started = datetime.utcnow()
     task_label = payload.task or "infer"
-    max_tokens = max(1, min(int(payload.max_tokens or int(os.getenv("LLM_MAX_NEW_TOKENS", "192"))), 1024))
+    default_tokens = int(os.getenv("LLM_FEEDBACK_MAX_NEW_TOKENS", os.getenv("LLM_MAX_NEW_TOKENS", "16")))
+    max_tokens = max(1, min(int(payload.max_tokens or default_tokens), 1024))
     temperature = float(payload.temperature if payload.temperature is not None else 0.2)
 
     if infer_engine.available():

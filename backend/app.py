@@ -6,12 +6,14 @@ MySQL 의 해당 레코드 ``file_path`` 컬럼에 상대경로를 기록한다.
 """
 from __future__ import annotations
 
+import ast
 import logging
 import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
 import urllib.request
@@ -25,6 +27,7 @@ from pydantic import BaseModel
 import db
 import storage
 import optimizer
+import complexity_reasoner
 import model_planner
 
 
@@ -59,6 +62,14 @@ log = logging.getLogger(SERVICE_NAME)
 
 app = FastAPI(title=f"local-ai {SERVICE_NAME}")
 
+# 시간 복잡도 추론기를 등록 (OPTIMIZER_COMPLEXITY_BACKEND=static|llm|hybrid).
+# 기본은 hybrid: LLM 결과와 정적 분석 결과 중 더 보수적인(높은) 라벨을 채택하고,
+# LLM 호출이 실패하면 정적 분석으로 자동 폴백한다.
+try:
+    complexity_reasoner.install()
+except Exception as _exc:  # noqa: BLE001
+    log.warning("complexity_reasoner install failed: %s", _exc)
+
 # --- CORS (안전한 기본값: localhost web-ui 만 허용) ---
 _cors_origins = [o.strip() for o in os.getenv("BACKEND_CORS_ORIGINS", "").split(",") if o.strip()]
 if not _cors_origins:
@@ -82,6 +93,11 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "").strip()
 MODEL_SERVER_GENERATE_TIMEOUT_SEC = int(os.getenv("MODEL_SERVER_GENERATE_TIMEOUT_SEC", "180"))
+FEEDBACK_LLM_TIMEOUT_SEC = int(os.getenv("FEEDBACK_LLM_TIMEOUT_SEC", "8"))
+FEEDBACK_LLM_MAX_TOKENS = int(os.getenv("FEEDBACK_LLM_MAX_TOKENS", "16"))
+FEEDBACK_FAST_PATH_ENABLED = os.getenv("FEEDBACK_FAST_PATH_ENABLED", "1").lower() not in ("0", "false", "no")
+LLM_OPTIMIZE_MAX_TOKENS = int(os.getenv("LLM_OPTIMIZE_MAX_TOKENS", "192"))
+LLM_SPEC_MAX_TOKENS = int(os.getenv("LLM_SPEC_MAX_TOKENS", "384"))
 _AUTH_EXEMPT_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json", "/favicon.ico"}
 
 if not BACKEND_API_KEY:
@@ -1289,6 +1305,158 @@ def get_model_answer(answer_id: int):
     return {"answer": row, "generated_code": gens, "optimized_code": opts, "images": images}
 
 
+def _delete_stored_file(rel_path: str | None) -> bool:
+    if not rel_path:
+        return False
+    try:
+        path = storage.resolve(rel_path)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("skip unsafe stored file delete path=%s err=%s", rel_path, exc)
+        return False
+    try:
+        if path.is_file():
+            path.unlink()
+            return True
+    except Exception as exc:  # noqa: BLE001
+        log.warning("stored file delete failed path=%s err=%s", rel_path, exc)
+    return False
+
+
+def _delete_vector_points(embeddings: list[dict[str, Any]]) -> int:
+    if not VECTOR_DB_ENABLED:
+        return 0
+    by_dim: dict[int, list[int]] = {}
+    for row in embeddings:
+        emb_id = row.get("id")
+        dim = row.get("dim")
+        if emb_id is None or dim is None:
+            continue
+        by_dim.setdefault(int(dim), []).append(int(emb_id))
+    deleted = 0
+    for dim, ids in by_dim.items():
+        res = _http_post_json(
+            f"{VECTOR_DB_URL}/collections/{_vector_collection(dim)}/points/delete?wait=true",
+            {"points": ids},
+            timeout=10,
+        )
+        if res is not None:
+            deleted += len(ids)
+    return deleted
+
+
+@app.delete("/api/v1/model-answers")
+def delete_all_model_answers(confirm: str = Query(..., description="type DELETE to confirm")):
+    if confirm != "DELETE":
+        raise HTTPException(400, "confirm=DELETE is required")
+
+    answers = db.fetch_all(
+        "SELECT id, raw_input_id, answer_file_path FROM model_answers ORDER BY id ASC"
+    )
+    answer_ids = [int(row["id"]) for row in answers]
+    raw_input_ids = sorted({int(row["raw_input_id"]) for row in answers if row.get("raw_input_id")})
+    if not answer_ids:
+        return {
+            "deleted_answers": 0,
+            "deleted_generated_code": 0,
+            "deleted_optimized_code": 0,
+            "deleted_embeddings": 0,
+            "deleted_raw_inputs": 0,
+            "deleted_files": 0,
+            "deleted_vector_points": 0,
+        }
+
+    answer_ph = ",".join(["%s"] * len(answer_ids))
+    raw_ph = ",".join(["%s"] * len(raw_input_ids)) if raw_input_ids else ""
+
+    gens = db.fetch_all(
+        f"SELECT id, file_path FROM generated_code WHERE answer_id IN ({answer_ph})",
+        tuple(answer_ids),
+    )
+    gen_ids = [int(row["id"]) for row in gens]
+    gen_ph = ",".join(["%s"] * len(gen_ids)) if gen_ids else ""
+
+    opts = db.fetch_all(
+        f"SELECT id, file_path, diff_file_path FROM optimized_code WHERE generated_code_id IN ({gen_ph})",
+        tuple(gen_ids),
+    ) if gen_ids else []
+    opt_ids = [int(row["id"]) for row in opts]
+    opt_ph = ",".join(["%s"] * len(opt_ids)) if opt_ids else ""
+
+    images = db.fetch_all(
+        f"""
+        SELECT file_path, text_file_path, code_file_path, spec_file_path, metadata_file_path
+          FROM image_data
+         WHERE raw_input_id IN ({raw_ph})
+        """,
+        tuple(raw_input_ids),
+    ) if raw_input_ids else []
+    raw_inputs = db.fetch_all(
+        f"SELECT source_file_path FROM raw_inputs WHERE id IN ({raw_ph})",
+        tuple(raw_input_ids),
+    ) if raw_input_ids else []
+
+    emb_clauses: list[str] = [f"(target_type='model_answer' AND target_id IN ({answer_ph}))"]
+    emb_params: list[Any] = list(answer_ids)
+    if gen_ids:
+        emb_clauses.append(f"(target_type='generated_code' AND target_id IN ({gen_ph}))")
+        emb_params.extend(gen_ids)
+    if opt_ids:
+        emb_clauses.append(f"(target_type='optimized_code' AND target_id IN ({opt_ph}))")
+        emb_params.extend(opt_ids)
+    embeddings = db.fetch_all(
+        "SELECT id, dim, vector_file_path FROM embeddings WHERE " + " OR ".join(emb_clauses),
+        tuple(emb_params),
+    )
+
+    file_paths: list[str | None] = []
+    file_paths.extend(row.get("answer_file_path") for row in answers)
+    file_paths.extend(row.get("file_path") for row in gens)
+    for row in opts:
+        file_paths.append(row.get("file_path"))
+        file_paths.append(row.get("diff_file_path"))
+    file_paths.extend(row.get("vector_file_path") for row in embeddings)
+    file_paths.extend(row.get("source_file_path") for row in raw_inputs)
+    for row in images:
+        file_paths.extend([
+            row.get("file_path"),
+            row.get("text_file_path"),
+            row.get("code_file_path"),
+            row.get("spec_file_path"),
+            row.get("metadata_file_path"),
+        ])
+
+    with db.get_cursor() as cur:
+        cur.execute("DELETE FROM embeddings WHERE " + " OR ".join(emb_clauses), tuple(emb_params))
+        deleted_embeddings = cur.rowcount
+        cur.execute(f"DELETE FROM model_answers WHERE id IN ({answer_ph})", tuple(answer_ids))
+        deleted_answers = cur.rowcount
+        if raw_input_ids:
+            cur.execute(f"DELETE FROM raw_inputs WHERE id IN ({raw_ph})", tuple(raw_input_ids))
+            deleted_raw = cur.rowcount
+        else:
+            deleted_raw = 0
+
+    vector_deleted = _delete_vector_points(embeddings)
+    seen: set[str] = set()
+    deleted_files = 0
+    for rel_path in file_paths:
+        if not rel_path or rel_path in seen:
+            continue
+        seen.add(rel_path)
+        if _delete_stored_file(rel_path):
+            deleted_files += 1
+
+    return {
+        "deleted_answers": deleted_answers,
+        "deleted_generated_code": len(gens),
+        "deleted_optimized_code": len(opts),
+        "deleted_embeddings": deleted_embeddings,
+        "deleted_raw_inputs": deleted_raw,
+        "deleted_files": deleted_files,
+        "deleted_vector_points": vector_deleted,
+    }
+
+
 # ---- 통합 실행 (요구사항 + 코드/이미지) → 모델 답변 ----
 class RunIn(BaseModel):
     requirement: Optional[str] = None
@@ -1301,16 +1469,32 @@ class RunIn(BaseModel):
     user_tag: Optional[str] = None
 
 
-def _try_call_model_server(prompt: str, model_name: str) -> tuple[str, dict[str, Any] | None]:
+def _try_call_model_server(
+    prompt: str,
+    model_name: str,
+    *,
+    language: str | None = None,
+    task: str = "feedback",
+    max_tokens: int | None = None,
+    timeout: int | None = None,
+) -> tuple[str, dict[str, Any] | None]:
     """model-server 가 generation 엔드포인트를 노출하면 호출.
 
     아직 placeholder 단계라 실패하면 stub 답변을 반환한다.
     """
     url = os.getenv("MODEL_SERVER_URL", "http://model-server:8001") + "/api/v1/generate"
-    body = json.dumps({"prompt": prompt, "model": model_name}).encode("utf-8")
+    default_tokens, default_timeout = _llm_budget_for_task(task)
+    body = json.dumps({
+        "prompt": prompt,
+        "model": model_name,
+        "language": language,
+        "task": task,
+        "max_tokens": max_tokens or default_tokens,
+        "temperature": 0.1,
+    }).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=MODEL_SERVER_GENERATE_TIMEOUT_SEC) as resp:
+        with urllib.request.urlopen(req, timeout=timeout or default_timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         text = data.get("text") or data.get("answer") or json.dumps(data, ensure_ascii=False)
         return text, data
@@ -1503,12 +1687,36 @@ def _detect_language(code: str, hint: str | None) -> tuple[str, dict[str, Any] |
     return "plain", None
 
 
-def _generate_with_model(prompt: str, model_name: str, language: str | None,
-                         task: str = "infer") -> tuple[str, dict[str, Any] | None]:
+def _llm_budget_for_task(task: str) -> tuple[int, int]:
+    fast_tasks = {"feedback", "infer", "reuse_adapt", "final-smoke", "review-smoke"}
+    if task in fast_tasks:
+        return FEEDBACK_LLM_MAX_TOKENS, FEEDBACK_LLM_TIMEOUT_SEC
+    if task in {"spec_extract", "spec_engine"}:
+        return LLM_SPEC_MAX_TOKENS, min(MODEL_SERVER_GENERATE_TIMEOUT_SEC, 120)
+    return LLM_OPTIMIZE_MAX_TOKENS, min(MODEL_SERVER_GENERATE_TIMEOUT_SEC, 90)
+
+
+def _generate_with_model(
+    prompt: str,
+    model_name: str,
+    language: str | None,
+    task: str = "feedback",
+    *,
+    max_tokens: int | None = None,
+    timeout: int | None = None,
+) -> tuple[str, dict[str, Any] | None]:
+    default_tokens, default_timeout = _llm_budget_for_task(task)
     res = _http_post_json(
         f"{MODEL_SERVER_URL}/api/v1/generate",
-        {"prompt": prompt, "model": model_name, "language": language, "task": task},
-        timeout=60,
+        {
+            "prompt": prompt,
+            "model": model_name,
+            "language": language,
+            "task": task,
+            "max_tokens": max_tokens or default_tokens,
+            "temperature": 0.1,
+        },
+        timeout=timeout or default_timeout,
     )
     if res and (res.get("text") or res.get("answer")):
         return res.get("text") or res.get("answer") or "", res
@@ -1519,6 +1727,67 @@ def _generate_with_model(prompt: str, model_name: str, language: str | None,
         f"```\n{prompt[:2000]}\n```\n"
     )
     return stub, None
+
+
+def _fast_feedback_answer(requirement: str | None, code: str | None, language: str | None) -> str:
+    code_text = code or ""
+    requirement_text = (requirement or "").strip()
+    lang = (language or "plain").lower()
+    pipeline = optimizer.optimize_pipeline(code_text, lang) if code_text else None
+    analysis = (pipeline or {}).get("analysis") or {"findings": []}
+    rule_findings = analysis.get("findings") or []
+    optimized_code = (pipeline or {}).get("optimized_code")
+    accepted = [c for c in (pipeline or {}).get("candidates", []) if c.get("accepted")]
+    applied_notes = [note for c in accepted for note in c.get("notes", [])]
+    findings: list[str] = []
+    fixes: list[str] = []
+    notes: list[str] = []
+
+    if pipeline:
+        before = (pipeline.get("complexity_before") or {}).get("class")
+        after = (pipeline.get("complexity_after") or {}).get("class")
+        if before:
+            findings.append(f"현재 추정 복잡도는 {before}입니다." + (f" 후보 적용 후 {after}입니다." if after else ""))
+        for bottleneck in pipeline.get("bottlenecks", [])[:2]:
+            message = str(bottleneck.get("message") or "").strip()
+            if message and message not in findings:
+                findings.append(message)
+        report = pipeline.get("failure_report") or {}
+        if report.get("message"):
+            notes.append(str(report["message"]))
+
+    for finding in rule_findings[:3]:
+        message = str(finding.get("message") or "").strip()
+        suggestion = str(finding.get("suggestion") or "").strip()
+        if message and message not in findings:
+            findings.append(message)
+        if suggestion and suggestion not in fixes:
+            fixes.append(suggestion)
+
+    if not findings and code_text:
+        findings.append("눈에 띄는 구조적 병목은 적습니다. 입력 전체를 한 번 훑는 방식으로 유지하는 것이 좋습니다.")
+    if not fixes and code_text:
+        fixes.append("자료구조 변환이나 정렬을 추가하지 말고 현재 순회 안에서 필요한 값만 누적하세요.")
+    if requirement_text:
+        notes.append("요구사항 기준으로는 먼저 병목 반복을 줄이고, 학습/장기 개선 작업은 요청 응답 경로 밖으로 분리하는 편이 맞습니다.")
+    if not code_text:
+        findings.append("입력 코드가 없어 요구사항 중심 피드백만 가능합니다.")
+        fixes.append("코드가 들어오면 반복 깊이, 불필요한 복사, DB/API 반복 호출 여부를 우선 확인하세요.")
+
+    code_changed = bool(optimized_code and optimized_code.strip() != code_text.strip())
+    outcome = (
+        "최적화 코드가 생성되었습니다."
+        if code_changed
+        else "이미 O(1) 또는 O(n) 이하로 판단되어 의미 보존상 코드를 그대로 유지합니다."
+    )
+
+    return "\n".join([
+        "핵심 피드백",
+        f"- 병목: {findings[0]}",
+        f"- 수정안: {fixes[0]}",
+        f"- 적용 결과: {outcome} {(applied_notes[0] if applied_notes else '').strip()}",
+        f"- 주의점: {(notes[0] if notes else '빠른 피드백은 O(n) 정적 분석으로 즉시 반환하고, 학습 LLM은 비동기로 누적시키는 구조가 적합합니다.')}",
+    ])
 
 
 def _embed_text(text: str, model: str | None = None) -> dict[str, Any] | None:
@@ -1869,7 +2138,12 @@ def api_infer(payload: InferIn):
         )
 
     # 4) LLM 추론 (model-server)
-    prompt_parts: list[str] = []
+    prompt_parts: list[str] = [
+        "[피드백 정책]\n"
+        "즉시 적용 가능한 핵심 피드백만 먼저 답해. "
+        "코드 개선은 가능한 한 O(n) 또는 그보다 나은 복잡도를 목표로 하고, "
+        "장황한 설명보다 병목/수정안/주의점 순서로 짧게 정리해."
+    ]
     if payload.requirement:
         prompt_parts.append("[요구사항]\n" + payload.requirement)
     if payload.code:
@@ -1880,9 +2154,18 @@ def api_infer(payload: InferIn):
 
     model_name = payload.model or _default_local_checkpoint()
     started = datetime.utcnow()
-    answer_text, raw_resp = _generate_with_model(
-        prompt_text, model_name, language, task="infer"
-    )
+    if FEEDBACK_FAST_PATH_ENABLED:
+        answer_text = _fast_feedback_answer(payload.requirement, payload.code, language)
+        raw_resp = {
+            "provider": "fast-feedback",
+            "task": "feedback",
+            "tokens_input": len(prompt_text.split()),
+            "tokens_output": len(answer_text.split()),
+        }
+    else:
+        answer_text, raw_resp = _generate_with_model(
+            prompt_text, model_name, language, task="feedback"
+        )
     latency_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
     tokens_in = (raw_resp or {}).get("tokens_input")
     tokens_out = (raw_resp or {}).get("tokens_output")
@@ -1906,6 +2189,68 @@ def api_infer(payload: InferIn):
         (saved_ans.rel_path, saved_ans.size, saved_ans.sha256, answer_id),
     )
 
+    generated_code_id: int | None = None
+    optimized_code_id: int | None = None
+    optimized_code_path: str | None = None
+    diff_file_path: str | None = None
+    pipeline: dict[str, Any] | None = None
+    if payload.code:
+        syntax_ok = True
+        if (language or "").lower() in ("python", "py"):
+            try:
+                ast.parse(payload.code)
+            except SyntaxError:
+                syntax_ok = False
+        saved_gen = storage.save_generated_code(
+            payload.code,
+            answer_id=answer_id,
+            language=language,
+        )
+        generated_code_id = db.execute(
+            """
+            INSERT INTO generated_code
+                (answer_id, language, file_name, code_text, is_runnable,
+                 file_path, file_size, sha256)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (answer_id, language, None, payload.code, int(syntax_ok),
+             saved_gen.rel_path, saved_gen.size, saved_gen.sha256),
+        )
+        pipeline = optimizer.optimize_pipeline(payload.code, language)
+        optimized_text = pipeline.get("optimized_code") or payload.code
+        accepted = [c for c in pipeline.get("candidates", []) if c.get("accepted")]
+        applied_notes = [note for c in accepted for note in c.get("notes", [])]
+        if not applied_notes and pipeline.get("selected_strategy"):
+            applied_notes = [str(pipeline["selected_strategy"])]
+        pipeline_failure = pipeline.get("failure_report")
+        # status=ok 이거나 status=partial 이라도 코드가 실제로 변경됐으면 결과를 저장한다.
+        if optimized_text.strip() != payload.code.strip():
+            improvement_notes = "\n".join(applied_notes)
+            if pipeline_failure and pipeline_failure.get("message"):
+                improvement_notes = (
+                    (improvement_notes + "\n") if improvement_notes else ""
+                ) + f"[부분 최적화] {pipeline_failure.get('message')}"
+            saved_opt = storage.save_optimized_code(
+                optimized_text,
+                generated_code_id=generated_code_id,
+                language=language,
+            )
+            diff_text = storage.make_unified_diff(payload.code, optimized_text)
+            saved_diff = storage.save_code_diff(diff_text, generated_code_id=generated_code_id)
+            optimized_code_id = db.execute(
+                """
+                INSERT INTO optimized_code
+                    (generated_code_id, optimizer, language, code_text, improvement_notes,
+                     file_path, diff_file_path, file_size, sha256)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (generated_code_id, "fast-feedback", language, optimized_text,
+                  improvement_notes, saved_opt.rel_path, saved_diff.rel_path,
+                 saved_opt.size, saved_opt.sha256),
+            )
+            optimized_code_path = saved_opt.rel_path
+            diff_file_path = saved_diff.rel_path
+
     # 6) embedding 생성 + 저장
     embedding_id: int | None = None
     if payload.embed:
@@ -1927,8 +2272,17 @@ def api_infer(payload: InferIn):
         "answer_text": answer_text,
         "answer_file_path": saved_ans.rel_path,
         "original_code_path": original_code_path,
+        "generated_code_id": generated_code_id,
+        "optimized_code_id": optimized_code_id,
+        "optimized_code_path": optimized_code_path,
+        "diff_file_path": diff_file_path,
         "embedding_id": embedding_id,
         "stub": raw_resp is None,
+        "optimizer_status": (pipeline or {}).get("status") if payload.code else None,
+        "optimizer_strategy": (pipeline or {}).get("selected_strategy") if payload.code else None,
+        "optimizer_complexity_before": ((pipeline or {}).get("complexity_before") or {}).get("class") if payload.code else None,
+        "optimizer_complexity_after": ((pipeline or {}).get("complexity_after") or {}).get("class") if payload.code else None,
+        "optimizer_failure": (pipeline or {}).get("failure_report") if payload.code else None,
     }
 
 
@@ -1983,15 +2337,39 @@ def api_optimize(payload: OptimizeIn):
     else:
         raise HTTPException(400, "generated_code_id 또는 (answer_id + code) 중 하나가 필요합니다")
 
-    # 모델 호출 (또는 stub) - 같은 코드를 그대로 돌려받지 않도록 instruction 을 prompt 에 합친다
-    prompt = (
-        "[지시]\n" + (payload.instruction or "다음 코드를 더 효율적으로 최적화해줘.") +
-        f"\n\n[코드 ({base_lang or 'plain'})]\n{base_code}"
-    )
     model_name = payload.model or _default_local_checkpoint()
-    optimized_text, raw_resp = _generate_with_model(
-        prompt, model_name, base_lang, task="optimize",
-    )
+    pipeline = optimizer.optimize_pipeline(base_code or "", base_lang)
+    optimized_text = pipeline.get("optimized_code") or base_code or ""
+    accepted = [c for c in pipeline.get("candidates", []) if c.get("accepted")]
+    applied_notes = [note for c in accepted for note in c.get("notes", [])]
+    if not applied_notes and pipeline.get("selected_strategy"):
+        applied_notes = [str(pipeline["selected_strategy"])]
+    raw_resp: dict[str, Any] | None = {
+        "provider": "fast-optimizer",
+        "task": "optimize",
+        "notes": applied_notes,
+    }
+    if pipeline.get("failure_report"):
+        return {
+            "generated_code_id": gen_id,
+            "optimized_code_id": None,
+            "language": base_lang,
+            "code": base_code,
+            "code_file_path": None,
+            "diff_file_path": None,
+            "status": "partial",
+            "notes": applied_notes,
+            "failure_report": pipeline.get("failure_report"),
+            "stub": False,
+        }
+    if optimized_text.strip() == (base_code or "").strip() and not FEEDBACK_FAST_PATH_ENABLED:
+        prompt = (
+            "[지시]\n" + (payload.instruction or "다음 코드를 더 효율적으로 최적화해줘.") +
+            f"\n\n[코드 ({base_lang or 'plain'})]\n{base_code}"
+        )
+        optimized_text, raw_resp = _generate_with_model(
+            prompt, model_name, base_lang, task="optimize",
+        )
 
     # 최적화 코드 + diff 저장
     saved_code = storage.save_optimized_code(
@@ -2006,7 +2384,8 @@ def api_optimize(payload: OptimizeIn):
              file_path, diff_file_path, file_size, sha256)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
-        (gen_id, model_name, base_lang, optimized_text, payload.instruction,
+        (gen_id, raw_resp.get("provider") if raw_resp else model_name, base_lang, optimized_text,
+         "\n".join(applied_notes) if applied_notes else payload.instruction,
          saved_code.rel_path, saved_diff.rel_path, saved_code.size, saved_code.sha256),
     )
     return {
@@ -4455,8 +4834,9 @@ def api_optimize_engine(payload: OptimizeEngineIn):
         language, detect_info = _detect_language(payload.code, None)
         language_source = (detect_info or {}).get("source") or "language-worker"
 
-    # ---- 3) 정적 분석 (규칙 기반) ----
-    analysis = optimizer.analyze(payload.code, language)
+    # ---- 3) 정적 분석 + O(n) 목표 파이프라인 ----
+    pipeline = optimizer.optimize_pipeline(payload.code, language)
+    analysis = pipeline["analysis"]
     findings: list[dict[str, Any]] = analysis["findings"]
     summary: dict[str, int] = analysis["summary"]
 
@@ -4517,14 +4897,24 @@ def api_optimize_engine(payload: OptimizeEngineIn):
         except Exception as exc:  # noqa: BLE001
             log.info("reuse search error: %s", exc)
 
-    # ---- 6) LLM 최적화 ----
+    # ---- 6) AST 기반 후보 최적화, 필요 시 LLM 보강 ----
     llm_started = datetime.utcnow()
-    optimized_text = payload.code
-    raw_resp: dict[str, Any] | None = None
+    optimized_text = pipeline.get("optimized_code") or payload.code
+    applied_notes = [
+        str(candidate.get("strategy"))
+        for candidate in pipeline.get("candidates", [])
+        if candidate.get("accepted")
+    ]
+    unresolved_complexity = bool(pipeline.get("failure_report"))
+    raw_resp: dict[str, Any] | None = {
+        "provider": "fast-optimizer",
+        "task": "optimize_engine",
+        "notes": applied_notes,
+    }
     model_name = payload.model or _default_local_checkpoint()
-    rule_only = not payload.use_llm
+    llm_used = False
 
-    if payload.use_llm:
+    if payload.use_llm and optimized_text.strip() == payload.code.strip() and not FEEDBACK_FAST_PATH_ENABLED:
         rule_hint = optimizer.findings_to_prompt_hint(findings)
         prompt_parts: list[str] = [
             "[지시]\n다음 코드를 9가지 최적화 유형(문법 오류 수정, 오탈자 수정, "
@@ -4554,6 +4944,8 @@ def api_optimize_engine(payload: OptimizeEngineIn):
         optimized_text, raw_resp = _generate_with_model(
             prompt, model_name, language, task="optimize",
         )
+        llm_used = True
+    rule_only = not llm_used
     llm_latency_ms = int((datetime.utcnow() - llm_started).total_seconds() * 1000)
 
     # ---- 7) 결과 비교 ----
@@ -4561,12 +4953,19 @@ def api_optimize_engine(payload: OptimizeEngineIn):
     comparison = optimizer.compare(payload.code, optimized_text, applied_types=applied_types)
     diff_text = storage.make_unified_diff(payload.code, optimized_text)
     comparison["rule_count"] = analysis["rule_count"]
-    comparison["llm_used"] = payload.use_llm
+    comparison["llm_used"] = llm_used
+    comparison["unresolved_complexity"] = unresolved_complexity
+    comparison["complexity_before"] = pipeline.get("complexity_before")
+    comparison["complexity_after"] = pipeline.get("complexity_after")
+    comparison["candidate_count"] = len(pipeline.get("candidates", []))
+    comparison["failure_report"] = pipeline.get("failure_report")
+    comparison["selected_strategy"] = pipeline.get("selected_strategy")
+    comparison["bottleneck_count"] = len(pipeline.get("bottlenecks", []))
     comparison["reuse_candidates"] = len(similar_answers)
     comparison["library_matches"] = len(library_matches) + len(library_hints)
 
     # ---- 8) 저장 ----
-    # 8.1 model_answers / generated_code 가 없으면 placeholder 로 만든다.
+    # 8.1 model_answers / generated_code 가 없으면 최적화 실행 이력용 답변을 만든다.
     answer_id = payload.answer_id
     if answer_id is None:
         answer_id = db.execute(
@@ -4577,7 +4976,7 @@ def api_optimize_engine(payload: OptimizeEngineIn):
             VALUES (%s, NULL, %s, 'local', %s, %s, %s, 'optimized')
             """,
             (raw_id, model_name,
-             "[Step 15] 코드 최적화 엔진 자동 생성 placeholder",
+             "[Step 15] 코드 최적화 엔진 실행 결과",
              optimized_text, llm_latency_ms),
         )
         s_ans = storage.save_model_answer(
@@ -4602,29 +5001,37 @@ def api_optimize_engine(payload: OptimizeEngineIn):
          s_gen.rel_path, s_gen.size, s_gen.sha256),
     )
 
-    s_opt = storage.save_optimized_code(
-        optimized_text, generated_code_id=gen_id, language=language,
-    )
-    s_diff = storage.save_code_diff(diff_text, generated_code_id=gen_id)
-    opt_id = db.execute(
-        """
-        INSERT INTO optimized_code
-            (generated_code_id, optimizer, language, code_text, improvement_notes,
-             file_path, diff_file_path, file_size, sha256)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (gen_id,
-         f"step15-engine ({'rule+llm' if payload.use_llm else 'rule-only'})",
-         language, optimized_text,
-         "Step 15 엔진: 적용 유형=" + ",".join(applied_types) if applied_types else None,
-         s_opt.rel_path, s_diff.rel_path, s_opt.size, s_opt.sha256),
-    )
+    opt_id: int | None = None
+    opt_code_path: str | None = None
+    opt_diff_path: str | None = None
+    if not unresolved_complexity and optimized_text.strip() != payload.code.strip():
+        s_opt = storage.save_optimized_code(
+            optimized_text, generated_code_id=gen_id, language=language,
+        )
+        s_diff = storage.save_code_diff(diff_text, generated_code_id=gen_id)
+        opt_code_path = s_opt.rel_path
+        opt_diff_path = s_diff.rel_path
+        opt_id = db.execute(
+            """
+            INSERT INTO optimized_code
+                (generated_code_id, optimizer, language, code_text, improvement_notes,
+                 file_path, diff_file_path, file_size, sha256)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (gen_id,
+             f"step15-engine ({'rule+llm' if payload.use_llm else 'rule-only'})",
+             language, optimized_text,
+             "Step 15 engine: applied_types=" + ",".join(applied_types) if applied_types else None,
+             s_opt.rel_path, s_diff.rel_path, s_opt.size, s_opt.sha256),
+        )
 
     total_latency_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
     status_value = "ok"
     if any(f["type_key"] == "syntax_error" and f.get("severity") == "error" for f in findings):
         status_value = "partial"
     if rule_only and not findings:
+        status_value = "partial"
+    if unresolved_complexity:
         status_value = "partial"
 
     run_id: int | None = None
@@ -4642,20 +5049,28 @@ def api_optimize_engine(payload: OptimizeEngineIn):
             (raw_id, gen_id, opt_id,
              language, language_source,
              payload.code, optimized_text, diff_text,
-             json.dumps({"summary": summary, "rule_count": analysis["rule_count"]},
-                        ensure_ascii=False),
+             json.dumps({
+                 "summary": summary,
+                 "rule_count": analysis["rule_count"],
+                 "complexity_before": pipeline.get("complexity_before"),
+                 "complexity_after": pipeline.get("complexity_after"),
+                 "bottlenecks": pipeline.get("bottlenecks", []),
+                 "selected_strategy": pipeline.get("selected_strategy"),
+                 "candidate_count": len(pipeline.get("candidates", [])),
+             }, ensure_ascii=False, default=str),
              json.dumps(
                  {"library_examples": library_matches,
                   "replacement_hints": library_hints},
                  ensure_ascii=False, default=str),
              json.dumps(similar_answers, ensure_ascii=False, default=str),
-             json.dumps(comparison, ensure_ascii=False),
+             json.dumps(comparison, ensure_ascii=False, default=str),
              model_name if payload.use_llm else None,
              llm_latency_ms if payload.use_llm else None,
              total_latency_ms,
              1 if rule_only else 0,
              status_value,
-             payload.requirement[:500] if payload.requirement else None),
+               (payload.requirement[:500] if payload.requirement else None)
+               or (str(pipeline.get("failure_report", {}).get("message") or "")[:500] or None)),
         )
     except Exception as exc:  # noqa: BLE001
         log.warning("optimization_runs insert failed: %s", exc)
@@ -4696,10 +5111,11 @@ def api_optimize_engine(payload: OptimizeEngineIn):
         "llm_latency_ms": llm_latency_ms if payload.use_llm else None,
         "total_latency_ms": total_latency_ms,
         "comparison": comparison,
+        "pipeline": pipeline,
         "code": optimized_text,
         "diff": diff_text,
-        "code_file_path": s_opt.rel_path,
-        "diff_file_path": s_diff.rel_path,
+        "code_file_path": opt_code_path,
+        "diff_file_path": opt_diff_path,
         "status": status_value,
         "rule_only": rule_only,
         "stub": (raw_resp is None) if payload.use_llm else False,
@@ -6670,5 +7086,6 @@ def api_benchmark_run_get(run_id: int):
             it["evidence"] = it.get("evidence_json")
         it.pop("evidence_json", None)
     return {"run": row, "items": items}
+
 
 

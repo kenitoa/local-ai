@@ -215,7 +215,7 @@
     <!-- =========================================================== -->
     <section id="screen-code-input" class="screen">
       <h1>소스코드 입력</h1>
-      <p class="muted">코드와 요구사항을 입력하고 실행 버튼을 누르면 모델이 답변을 생성합니다.</p>
+      <p class="muted">코드를 입력할 시 최적화된 코드로 변환함</p>
 
       <div class="card">
         <div class="row">
@@ -239,9 +239,6 @@
             <input type="text" id="ci-model" placeholder="예: self/cold-start" value="self/cold-start" />
           </div>
         </div>
-
-        <label for="ci-requirement" style="margin-top:0.75rem">요구사항</label>
-        <textarea id="ci-requirement" placeholder="예: 이 함수의 시간복잡도를 O(n)으로 줄여줘"></textarea>
 
         <label for="ci-code" style="margin-top:0.75rem">소스 코드</label>
         <textarea id="ci-code" class="code" placeholder="여기에 소스 코드를 붙여넣으세요"></textarea>
@@ -371,6 +368,7 @@
           <input type="text" id="sr-model" placeholder="모델명 필터(선택)" style="max-width: 220px" />
           <button class="primary" id="sr-search">검색</button>
           <button class="secondary" id="sr-refresh">최근 50개</button>
+          <button class="danger" id="sr-delete-all">전체 삭제</button>
         </div>
         <div class="muted" id="sr-status">결과를 불러오는 중…</div>
         <div style="margin-top: 0.6rem; overflow:auto">
@@ -873,16 +871,14 @@
 
   // -------------------- 2) Source code input --------------------
   $('ci-clear').addEventListener('click', () => {
-    $('ci-requirement').value = '';
     $('ci-code').value = '';
     $('ci-status').textContent = '';
   });
   $('ci-run').addEventListener('click', async () => {
-    const requirement = $('ci-requirement').value.trim();
     const code = $('ci-code').value;
     const language = $('ci-language').value || null;
     const model = $('ci-model').value.trim() || DEFAULT_MODEL;
-    if (!requirement && !code) { toast('요구사항이나 코드 중 하나는 입력하세요', 'error'); return; }
+    if (!code.trim()) { toast('코드를 입력하세요', 'error'); return; }
     $('ci-run').disabled = true;
     $('ci-status').textContent = '실행 중…';
     try {
@@ -890,7 +886,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requirement: requirement || null,
+          requirement: '입력 코드를 최적화된 코드로 변환해줘.',
           code: code || null,
           language: language,
           model: model,
@@ -900,6 +896,13 @@
       toast(`답변 저장됨 (#${r.answer_id})`, 'ok');
       lastAnswerId = r.answer_id;
       lastOriginalCode = code || '';
+      lastOptimizerMeta = {
+        status: r.optimizer_status,
+        strategy: r.optimizer_strategy,
+        before: r.optimizer_complexity_before,
+        after: r.optimizer_complexity_after,
+        failure: r.optimizer_failure,
+      };
       await openResult(r.answer_id);
       showScreen('result');
     } catch (e) {
@@ -1044,6 +1047,7 @@
   // -------------------- 4) Result screen --------------------
   let lastAnswerId = null;
   let lastOriginalCode = '';
+  let lastOptimizerMeta = null;
 
   async function openResult(answerId) {
     if (!answerId) return;
@@ -1097,9 +1101,28 @@
         compareCard.style.display = '';
         $('rs-original').textContent = originalText || '(원본 코드 없음)';
         $('rs-generated').textContent = generatedText || '(생성 코드 없음)';
+        const unchanged = originalText && generatedText && originalText.trim() === generatedText.trim();
+        const optNote = opt && opt.improvement_notes ? ` · ${opt.improvement_notes}` : '';
+        const meta = lastOptimizerMeta || {};
+        const before = meta.before;
+        const after = meta.after;
+        let complexityNote = '';
+        if (before || after) {
+          complexityNote = ` · 복잡도: ${before || '?'} → ${after || '?'}`;
+        }
+        let unchangedNote = '';
+        if (unchanged) {
+          if (before && /^O\(n\)/.test(before)) {
+            unchangedNote = ' · 변경 없음: 이미 O(n) 이하로 판단';
+          } else if (meta.failure && meta.failure.reason) {
+            unchangedNote = ` · 변경 없음: ${meta.failure.reason}`;
+          } else {
+            unchangedNote = ' · 변경 없음: 자동 변환 가능한 패턴을 찾지 못함';
+          }
+        }
         $('rs-compare-meta').textContent = opt
-          ? `optimized_code #${opt.id} (optimizer=${opt.optimizer || '-'})`
-          : (gen ? `generated_code #${gen.id}` : '');
+          ? `optimized_code #${opt.id} (optimizer=${opt.optimizer || '-'})${complexityNote}${unchangedNote}${optNote}`
+          : (gen ? `generated_code #${gen.id}${complexityNote}${unchangedNote}` : '');
       }
 
       if (opt && opt.diff_file_path) {
@@ -1151,6 +1174,32 @@
   }
   $('sr-search').addEventListener('click', searchAnswers);
   $('sr-refresh').addEventListener('click', () => { $('sr-q').value = ''; $('sr-model').value = ''; searchAnswers(); });
+  $('sr-delete-all').addEventListener('click', async () => {
+    const ok = window.confirm('저장된 답변, 생성/최적화 코드, 임베딩, 연결된 저장 파일을 전부 삭제합니다. 계속할까요?');
+    if (!ok) return;
+    const finalOk = window.confirm('되돌릴 수 없습니다. 정말 전체 삭제할까요?');
+    if (!finalOk) return;
+    $('sr-delete-all').disabled = true;
+    $('sr-status').textContent = '전체 삭제 중…';
+    try {
+      const r = await api('/api/v1/model-answers?confirm=DELETE', { method: 'DELETE' });
+      $('sr-q').value = '';
+      $('sr-model').value = '';
+      $('sr-table').querySelector('tbody').innerHTML = '';
+      $('sr-status').textContent =
+        `전체 삭제 완료 · 답변 ${r.deleted_answers}건 · 파일 ${r.deleted_files}개 · 임베딩 ${r.deleted_embeddings}건`;
+      toast('저장된 답변 전체 삭제 완료', 'ok');
+      lastAnswerId = null;
+      $('result-content').style.display = 'none';
+      $('result-empty').style.display = '';
+    } catch (e) {
+      $('sr-status').textContent = '전체 삭제 실패: ' + e.message;
+      toast('전체 삭제 실패: ' + e.message, 'error');
+    } finally {
+      $('sr-delete-all').disabled = false;
+      searchAnswers();
+    }
+  });
   $('sr-q').addEventListener('keydown', e => { if (e.key === 'Enter') searchAnswers(); });
 
   // -------------------- 6) System status --------------------
