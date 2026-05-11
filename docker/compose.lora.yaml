@@ -1,0 +1,14 @@
+services:
+  app:
+    environment:
+      LORA_ENABLED: "1"
+      LORA_ADAPTER_NAME: ${LORA_ADAPTER_NAME:-code-optimizer-lora}
+      LORA_ADAPTER_PATH: ${LORA_ADAPTER_PATH:-/models/adapters/code-optimizer-lora}
+      LLM_MODEL: ${LORA_MODEL_NAME:-code-optimizer-lora}
+
+  core-runner:
+    environment:
+      LORA_ENABLED: "1"
+      LORA_ADAPTER_NAME: ${LORA_ADAPTER_NAME:-code-optimizer-lora}
+      LORA_ADAPTER_PATH: ${LORA_ADAPTER_PATH:-/models/adapters/code-optimizer-lora}
+      LLM_MODEL: ${LORA_MODEL_NAME:-code-optimizer-lora}

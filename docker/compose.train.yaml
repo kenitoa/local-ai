@@ -1,0 +1,46 @@
+services:
+  trainer:
+    build:
+      context: ..
+      dockerfile: workers/train_worker/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace
+      - model-cache:/models
+      - training-data:/data/fine_tune
+      - checkpoints:/checkpoints
+    environment:
+      AI_DEVICE: cuda
+      BASE_MODEL: /models/base/code-model
+      HF_HOME: /models/.cache/huggingface
+      HF_HUB_CACHE: /models/.cache/huggingface/hub
+      HF_TOKEN_PATH: /run/secrets/hf_token
+      QLORA: "1"
+    secrets:
+      - hf_token
+    command:
+      [
+        "python",
+        "scripts/train_lora.py",
+        "--dataset",
+        "/workspace/data/fine_tune/splits/train.jsonl",
+        "--output",
+        "/checkpoints/code-optimizer-lora",
+        "--qlora"
+      ]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  model-cache:
+  training-data:
+  checkpoints:
+
+secrets:
+  hf_token:
+    file: ../secrets/hf_token.txt

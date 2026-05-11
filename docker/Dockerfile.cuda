@@ -1,0 +1,19 @@
+FROM vllm/vllm-openai:latest
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /workspace
+
+COPY apps/api/requirements.cuda.txt /tmp/requirements.cuda.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.cuda.txt
+
+COPY pyproject.toml README.md ./
+COPY core ./core
+COPY adapters ./adapters
+COPY scripts ./scripts
+
+RUN pip install --no-cache-dir --no-deps -e .
+
+ENTRYPOINT ["ai-code-optimize"]
+CMD ["/projects/sample", "--target", "src/main.py", "--goal", "Improve performance while preserving behavior.", "--mode", "hybrid"]
