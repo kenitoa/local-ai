@@ -1,0 +1,8 @@
+{
+  "name": "Avalonia CrossPlatform UI",
+  "version": "0.1.0",
+  "model": "Avalonia + HttpClient + ASP.NET API",
+  "memory": "API-backed session",
+  "specialty": "Cross-platform final UI",
+  "purpose": "Documents and scaffolds the Avalonia layer for Windows, macOS, and Linux desktop clients, especially NAS administration and local AI desktop workflows that need OS portability."
+}

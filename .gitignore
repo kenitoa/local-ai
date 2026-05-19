@@ -1,0 +1,25 @@
+.env
+.env.*
+!.env.example
+
+bin/
+obj/
+.build/
+node_modules/
+dist/
+
+runtime/ollama/server/benchmark-results*.json
+runtime/ollama/server/final-validation-report*.json
+runtime/ollama/server/pull-results.json
+runtime/ollama/server/*.log
+runtime/ollama/server/cli/*
+!runtime/ollama/server/cli/.gitkeep
+runtime/ollama/server/home/*
+!runtime/ollama/server/home/.gitkeep
+runtime/ollama/server/models/*
+!runtime/ollama/server/models/.gitkeep
+
+# Local/generated leftovers that should not be uploaded to GitHub.
+Microsoft/
+Interface/
+local LLM model/

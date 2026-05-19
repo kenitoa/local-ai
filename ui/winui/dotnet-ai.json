@@ -1,0 +1,8 @@
+{
+  "name": "WinUI Modern UI",
+  "version": "0.1.0",
+  "model": "WinUI 3 + Windows App SDK + HttpClient + ASP.NET API",
+  "memory": "API-backed session",
+  "specialty": "Modern Windows 10/11 UI option",
+  "purpose": "Documents and scaffolds the WinUI layer for Windows 11 style UI, Microsoft Store distribution, modern XAML, and touch-friendly UI while preserving the WPF-first delivery order."
+}

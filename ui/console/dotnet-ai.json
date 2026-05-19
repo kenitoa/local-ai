@@ -1,0 +1,8 @@
+﻿{
+  "name": "Console Validation",
+  "version": "0.1.0",
+  "model": "runtime/semantic-kernel + Ollama",
+  "memory": "ChatSession",
+  "specialty": "First-pass console validation",
+  "purpose": "Checks KernelFactory, ChatSession, PromptManager, plugin registration, logging, exception handling, and Ollama connectivity."
+}

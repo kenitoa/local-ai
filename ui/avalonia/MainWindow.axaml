@@ -1,0 +1,84 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AvaloniaCrossPlatformUi.MainWindow"
+        Title="Local AI Avalonia"
+        Width="1120"
+        Height="760"
+        MinWidth="900"
+        MinHeight="620">
+  <Grid Margin="18" ColumnDefinitions="260,*,320" RowDefinitions="*">
+    <Border Grid.Column="0"
+            Padding="16"
+            CornerRadius="8"
+            BorderBrush="#2C3440"
+            BorderThickness="1"
+            Background="#15191F">
+      <StackPanel Spacing="12">
+        <TextBlock Text="5. Avalonia"
+                   FontSize="30"
+                   FontWeight="Bold" />
+        <TextBlock Text="Windows, macOS, Linux를 함께 고려하는 크로스플랫폼 최종 UI"
+                   TextWrapping="Wrap"
+                   Opacity="0.72" />
+        <TextBlock Text="추천 상황"
+                   Margin="0,12,0,0"
+                   FontWeight="SemiBold" />
+        <TextBlock FontFamily="Cascadia Mono, Consolas"
+                   Text="Windows + Linux 지원&#x0a;Windows + macOS 지원&#x0a;NAS 관리 클라이언트&#x0a;장기 크로스플랫폼 목표" />
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Column="1"
+            Margin="14,0"
+            Padding="16"
+            CornerRadius="8"
+            BorderBrush="#2C3440"
+            BorderThickness="1"
+            Background="#15191F">
+      <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+        <StackPanel>
+          <TextBlock Text="채팅 / 관리 콘솔"
+                     FontSize="22"
+                     FontWeight="Bold" />
+          <TextBlock Text="Avalonia는 UI만 담당하고 /api/chat, /api/models, /api/health를 호출합니다."
+                     Opacity="0.72" />
+        </StackPanel>
+
+        <ListBox Grid.Row="1"
+                 Name="ChatList" />
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,96" ColumnSpacing="10">
+          <TextBox Name="PromptBox"
+                   Watermark="ASP.NET API로 보낼 메시지" />
+          <Button Grid.Column="1"
+                  Content="전송" />
+        </Grid>
+      </Grid>
+    </Border>
+
+    <Border Grid.Column="2"
+            Padding="16"
+            CornerRadius="8"
+            BorderBrush="#2C3440"
+            BorderThickness="1"
+            Background="#15191F">
+      <StackPanel Spacing="12">
+        <TextBlock Text="크로스플랫폼 설정"
+                   FontSize="22"
+                   FontWeight="Bold" />
+        <TextBlock Text="API Base URL"
+                   FontWeight="SemiBold" />
+        <TextBox Text="http://localhost:5089" />
+        <TextBlock Text="NAS / 작업 경로"
+                   FontWeight="SemiBold" />
+        <TextBox Text="/mnt/nas/local-ai" />
+        <Button Content="API 상태 확인" />
+        <TextBlock Text="구조"
+                   Margin="0,12,0,0"
+                   FontWeight="SemiBold" />
+        <TextBlock FontFamily="Cascadia Mono, Consolas"
+                   Text="Avalonia&#x0a;  ↓&#x0a;HttpClient&#x0a;  ↓&#x0a;ASP.NET API&#x0a;  ↓&#x0a;Semantic Kernel" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
