@@ -105,7 +105,7 @@ Use `Provider: "OpenAICompatible"` when the native experimental Ollama connector
 13. Plugin 등록 구조 추가: `KernelFactory` registers system/file/NAS/search/memory/command plugins through the connector builder hook.
 14. Function calling 테스트: `EnableFunctionCalling` controls auto function calling without removing plugin registration.
 15. OpenAI 호환 fallback connector 추가: `Provider: "OpenAICompatible"` uses `http://localhost:11434/v1`.
-16. Console -> WPF/WinUI/Avalonia/API로 확장: clients call the ASP.NET API at `http://localhost:5089` and use the shared API response contract.
+16. Console -> WPF/WinUI/Avalonia/API로 확장: clients call the ASP.NET API at `http://localhost:5088` and use the shared API response contract.
 
 ## Final Verification Cases
 
@@ -159,7 +159,7 @@ dotnet run --project .\LocalAI.Api\LocalAI.Api.csproj
 Default API URL:
 
 ```text
-http://localhost:5089
+http://localhost:5088
 ```
 
 ## API Endpoints
@@ -197,7 +197,7 @@ Keep these disabled unless the caller is an explicit trusted UI action with user
 WPF and Avalonia clients should point to:
 
 ```text
-http://localhost:5089
+http://localhost:5088
 ```
 
 The API hides Semantic Kernel and Ollama from UI clients:

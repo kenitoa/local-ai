@@ -68,7 +68,7 @@
                    FontWeight="Bold" />
         <TextBlock Text="API Base URL"
                    FontWeight="SemiBold" />
-        <TextBox Text="http://localhost:5089" />
+        <TextBox Text="http://localhost:5088" />
         <TextBlock Text="NAS / 작업 경로"
                    FontWeight="SemiBold" />
         <TextBox Text="/mnt/nas/local-ai" />

@@ -34,7 +34,7 @@
                      FontWeight="SemiBold" />
           <TextBox x:Name="ApiBaseUrlBox"
                    Margin="0,8,0,8"
-                   Text="http://localhost:5089" />
+                   Text="http://localhost:5088" />
           <Button x:Name="HealthButton"
                   Click="HealthButton_Click"
                   Content="상태 확인" />

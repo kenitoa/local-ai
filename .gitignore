@@ -7,6 +7,8 @@ obj/
 .build/
 node_modules/
 dist/
+publish/app/
+publish/logs/
 
 runtime/ollama/server/benchmark-results*.json
 runtime/ollama/server/final-validation-report*.json

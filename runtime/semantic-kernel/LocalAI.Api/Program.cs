@@ -7,7 +7,7 @@ using Microsoft.SemanticKernel;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://localhost:5089");
+builder.WebHost.UseUrls("http://localhost:5088");
 builder.Services.AddControllers();
 
 var modelOptions = ReadAiModelOptions(builder.Configuration);
