@@ -12,6 +12,7 @@
 ## Runtime Requirements
 
 - .NET 9 SDK or newer for source builds and first-run publish refreshes
+- Repo-local `NuGet.Config` is used for source builds so broken Visual Studio or user-level package sources are ignored.
 - Ollama running at `http://localhost:11434`
 - Model configured in `LocalAI.Api/appsettings.json`
 

@@ -15,6 +15,8 @@ $ApiOut = Join-Path $AppRoot "api"
 $WpfOut = Join-Path $AppRoot "wpf"
 $WebSource = Join-Path $RepoRoot "apps\web"
 $WebOut = Join-Path $ApiOut "wwwroot"
+$NuGetConfig = Join-Path $RepoRoot "NuGet.Config"
+$PackageCacheRoot = Join-Path $RepoRoot ".build\nuget-packages"
 
 function Assert-DotnetSdk {
   if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
@@ -46,11 +48,22 @@ function Invoke-DotnetPublish {
   )
 
   New-Item -ItemType Directory -Force -Path $Output | Out-Null
+  New-Item -ItemType Directory -Force -Path $PackageCacheRoot | Out-Null
+
+  $restoreArgs = @("restore", $Project, "-v:minimal")
+  if (Test-Path -LiteralPath $NuGetConfig -PathType Leaf) {
+    $restoreArgs += @("--configfile", $NuGetConfig)
+  }
+  if (-not $FrameworkDependent) {
+    $restoreArgs += @("-r", $RuntimeIdentifier)
+  }
+
   $publishArgs = @(
     "publish",
     $Project,
     "-c", $Configuration,
     "-o", $Output,
+    "--no-restore",
     "-v:minimal"
   )
   if ($FrameworkDependent) {
@@ -60,11 +73,26 @@ function Invoke-DotnetPublish {
     $publishArgs += @("-r", $RuntimeIdentifier, "--self-contained", "true")
   }
 
-  if ($NoRestore) {
-    $publishArgs += "--no-restore"
-  }
+  $previousNuGetPackages = $env:NUGET_PACKAGES
+  $env:NUGET_PACKAGES = $PackageCacheRoot
+  try {
+    if (-not $NoRestore) {
+      dotnet @restoreArgs
+      if ($LASTEXITCODE -ne 0) {
+        throw "dotnet restore failed for $Project"
+      }
+    }
 
-  dotnet @publishArgs
+    dotnet @publishArgs
+  }
+  finally {
+    if ($null -eq $previousNuGetPackages) {
+      Remove-Item Env:NUGET_PACKAGES -ErrorAction SilentlyContinue
+    }
+    else {
+      $env:NUGET_PACKAGES = $previousNuGetPackages
+    }
+  }
 
   if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed for $Project"

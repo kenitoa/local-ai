@@ -6,7 +6,8 @@ param(
   [switch]$NoWeb,
   [switch]$LaunchWeb,
   [switch]$LaunchWpf,
-  [switch]$NoWpf
+  [switch]$NoWpf,
+  [switch]$RefreshPublish
 )
 
 $ErrorActionPreference = "Stop"
@@ -120,32 +121,12 @@ function Wait-HttpOk {
 function Ensure-PublishedApps {
   $apiExe = Join-Path $ApiRoot "AspNetAiApi.exe"
   $apiDll = Join-Path $ApiRoot "AspNetAiApi.dll"
-  $webIndex = Join-Path $WebOut "index.html"
   $apiOutput = @($apiExe, $apiDll) |
     Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
     Select-Object -First 1
 
-  $needsPublish = -not $apiOutput
-  if (-not $needsPublish) {
-    $apiSourceRoots = @(
-      (Join-Path $RepoRoot "ui\api"),
-      (Join-Path $RepoRoot "Cloud AI interface")
-    )
-    $newestSource = $apiSourceRoots |
-      Where-Object { Test-Path -LiteralPath $_ } |
-      ForEach-Object {
-        Get-ChildItem -LiteralPath $_ -Recurse -File -Include *.cs,*.csproj,*.json |
-          Where-Object { $_.FullName -notmatch "[\\/](bin|obj)[\\/]" }
-      } |
-      Sort-Object LastWriteTimeUtc -Descending |
-      Select-Object -First 1
-
-    if ($newestSource -and $newestSource.LastWriteTimeUtc -gt (Get-Item -LiteralPath $apiOutput).LastWriteTimeUtc) {
-      $needsPublish = $true
-    }
-  }
-
-  if (-not $needsPublish) {
+  if ($apiOutput -and -not $RefreshPublish) {
+    Write-Step "using existing publish output at $ApiRoot"
     Sync-WebAssets
     return
   }
@@ -155,7 +136,12 @@ function Ensure-PublishedApps {
   }
 
   Stop-IncompatibleRepoApi
-  Write-Step "publish output is missing or stale; building API and desktop UI once"
+  if ($RefreshPublish) {
+    Write-Step "refreshing publish output by request"
+  }
+  else {
+    Write-Step "publish output is missing; building API and desktop UI once"
+  }
   & powershell -NoProfile -ExecutionPolicy Bypass -File $BuildPublishScript -IncludeWpf
 
   if (-not ((Test-Path -LiteralPath $apiExe -PathType Leaf) -or
@@ -169,7 +155,12 @@ function Ensure-PublishedApps {
 function Sync-WebAssets {
   $webIndex = Join-Path $WebSource "index.html"
   if (-not (Test-Path -LiteralPath $webIndex -PathType Leaf)) {
-    throw "Web UI source was not found: $WebSource"
+    if (Test-Path -LiteralPath (Join-Path $WebOut "index.html") -PathType Leaf) {
+      Write-Step "web source was not found; using existing published web assets"
+      return
+    }
+
+    throw "Web UI source was not found and published web assets are missing: $WebSource"
   }
 
   $sourceFiles = @(
@@ -201,7 +192,8 @@ function Sync-WebAssets {
 
 function Start-Ollama {
   if (-not (Test-Path -LiteralPath $OllamaStartScript -PathType Leaf)) {
-    throw "Ollama start script was not found: $OllamaStartScript"
+    Write-Step "Ollama start script was not found; skipping automatic Ollama startup"
+    return
   }
 
   if (Test-HttpOk -Url $OllamaTagsUrl -TimeoutSeconds 2) {
