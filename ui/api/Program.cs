@@ -4,7 +4,10 @@ using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://localhost:5088");
+var apiUrls = Environment.GetEnvironmentVariable("LOCAL_AI_API_URLS")
+    ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS")
+    ?? "http://localhost:5088";
+builder.WebHost.UseUrls(apiUrls);
 
 builder.Services.AddCors(options =>
 {
@@ -47,6 +50,12 @@ if (webRoot is not null)
 app.MapGet("/", () => webRoot is null
     ? Results.Redirect("/api/health")
     : Results.File(Path.Combine(webRoot, "index.html"), "text/html"));
+
+app.MapGet("/api/ready", () => Results.Ok(new
+{
+    status = "ready",
+    api = "aspnet-api"
+}));
 
 app.MapGet("/api/health", async (OllamaClient ollama, CancellationToken cancellationToken) =>
 {

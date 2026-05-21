@@ -21,10 +21,12 @@ $WebSource = Join-Path $RepoRoot "apps\web"
 $WebOut = Join-Path $ApiRoot "wwwroot"
 $OllamaStartScript = Join-Path $RepoRoot "runtime\ollama\server\start-server.ps1"
 $BuildPublishScript = Join-Path $RepoRoot "scripts\build-publish.ps1"
+$ApiReadyUrl = "http://localhost:$ApiPort/api/ready"
 $ApiHealthUrl = "http://localhost:$ApiPort/api/health"
 $ApiCloudInterfaceUrl = "http://localhost:$ApiPort/api/cloud-ai/interface"
 $ApiMarketUrl = "http://localhost:$ApiPort/api/market/models"
 $WebUrl = "http://localhost:$ApiPort/"
+$OllamaTagsUrl = "http://localhost:11434/api/tags"
 
 New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
 
@@ -36,7 +38,7 @@ function Write-Step {
 function Test-HttpOk {
   param(
     [string]$Url,
-    [int]$TimeoutSeconds = 2
+    [int]$TimeoutSeconds = 6
   )
 
   try {
@@ -49,7 +51,8 @@ function Test-HttpOk {
 }
 
 function Test-ApiCompatible {
-  return (Test-HttpOk -Url $ApiHealthUrl) -and
+  return (Test-HttpOk -Url $ApiReadyUrl) -and
+    (Test-HttpOk -Url $ApiHealthUrl) -and
     (Test-HttpOk -Url $ApiCloudInterfaceUrl) -and
     (Test-HttpOk -Url $ApiMarketUrl)
 }
@@ -118,9 +121,31 @@ function Ensure-PublishedApps {
   $apiExe = Join-Path $ApiRoot "AspNetAiApi.exe"
   $apiDll = Join-Path $ApiRoot "AspNetAiApi.dll"
   $webIndex = Join-Path $WebOut "index.html"
+  $apiOutput = @($apiExe, $apiDll) |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
 
-  if ((Test-Path -LiteralPath $apiExe -PathType Leaf) -or
-      (Test-Path -LiteralPath $apiDll -PathType Leaf)) {
+  $needsPublish = -not $apiOutput
+  if (-not $needsPublish) {
+    $apiSourceRoots = @(
+      (Join-Path $RepoRoot "ui\api"),
+      (Join-Path $RepoRoot "Cloud AI interface")
+    )
+    $newestSource = $apiSourceRoots |
+      Where-Object { Test-Path -LiteralPath $_ } |
+      ForEach-Object {
+        Get-ChildItem -LiteralPath $_ -Recurse -File -Include *.cs,*.csproj,*.json |
+          Where-Object { $_.FullName -notmatch "[\\/](bin|obj)[\\/]" }
+      } |
+      Sort-Object LastWriteTimeUtc -Descending |
+      Select-Object -First 1
+
+    if ($newestSource -and $newestSource.LastWriteTimeUtc -gt (Get-Item -LiteralPath $apiOutput).LastWriteTimeUtc) {
+      $needsPublish = $true
+    }
+  }
+
+  if (-not $needsPublish) {
     Sync-WebAssets
     return
   }
@@ -129,7 +154,8 @@ function Ensure-PublishedApps {
     throw "Publish output is missing and build script was not found: $BuildPublishScript"
   }
 
-  Write-Step "publish output is missing; building API and desktop UI once"
+  Stop-IncompatibleRepoApi
+  Write-Step "publish output is missing or stale; building API and desktop UI once"
   & powershell -NoProfile -ExecutionPolicy Bypass -File $BuildPublishScript -IncludeWpf
 
   if (-not ((Test-Path -LiteralPath $apiExe -PathType Leaf) -or
@@ -178,24 +204,41 @@ function Start-Ollama {
     throw "Ollama start script was not found: $OllamaStartScript"
   }
 
+  if (Test-HttpOk -Url $OllamaTagsUrl -TimeoutSeconds 2) {
+    Write-Step "Ollama is already running at $OllamaTagsUrl"
+    return
+  }
+
   $startupTimeout = if ($WaitForOllama) { $OllamaStartupTimeoutSeconds } else { 3 }
   $mode = if ($WaitForOllama) { "waiting up to $startupTimeout seconds" } else { "background, fast startup path" }
   Write-Step "starting Ollama ($mode)"
   $ollamaLog = Join-Path $LogRoot "ollama.startup.log"
-  try {
-    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $OllamaStartScript -Background -StartupTimeoutSeconds $startupTimeout 2>&1
-    if ($output) {
-      $output | Out-File -FilePath $ollamaLog -Encoding utf8
-    }
+  $ollamaErrLog = Join-Path $LogRoot "ollama.startup.stderr.log"
+  Remove-Item -LiteralPath $ollamaLog, $ollamaErrLog -Force -ErrorAction SilentlyContinue
 
-    if ($LASTEXITCODE -ne 0) {
-      Write-Step "Ollama startup returned exit code $LASTEXITCODE; details: $ollamaLog"
-      $global:LASTEXITCODE = 0
-    }
+  $arguments = @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", "`"$OllamaStartScript`"",
+    "-Background",
+    "-StartupTimeoutSeconds", "$startupTimeout"
+  )
+
+  Start-Process -FilePath "powershell" `
+    -ArgumentList $arguments `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $ollamaLog `
+    -RedirectStandardError $ollamaErrLog | Out-Null
+
+  if ($WaitForOllama) {
+    Wait-HttpOk -Url $OllamaTagsUrl -TimeoutSeconds $OllamaStartupTimeoutSeconds -Name "Ollama"
+    Write-Step "Ollama is running at $OllamaTagsUrl"
+    return
   }
-  catch {
-    $_ | Out-File -FilePath $ollamaLog -Encoding utf8
-    Write-Step "Ollama startup warning; details: $ollamaLog"
+
+  Start-Sleep -Seconds 1
+  if (-not (Test-HttpOk -Url $OllamaTagsUrl -TimeoutSeconds 2)) {
+    Write-Step "Ollama is still starting in the background; details: $ollamaLog"
   }
 }
 
@@ -231,25 +274,57 @@ function Start-Api {
   }
 
   $apiWorkingDirectory = Split-Path -Parent $apiPath
-  if ([IO.Path]::GetExtension($apiPath).Equals(".exe", [StringComparison]::OrdinalIgnoreCase)) {
-    Start-Process -FilePath $apiPath `
-      -WorkingDirectory $apiWorkingDirectory `
-      -WindowStyle Hidden `
-      -RedirectStandardOutput $outLog `
-      -RedirectStandardError $errLog | Out-Null
+  $previousLocalAiApiUrls = $env:LOCAL_AI_API_URLS
+  $previousAspNetCoreUrls = $env:ASPNETCORE_URLS
+  $apiProcess = $null
+  $env:LOCAL_AI_API_URLS = "http://localhost:$ApiPort"
+  try {
+    if ([IO.Path]::GetExtension($apiPath).Equals(".exe", [StringComparison]::OrdinalIgnoreCase)) {
+      $apiProcess = Start-Process -FilePath $apiPath `
+        -WorkingDirectory $apiWorkingDirectory `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $outLog `
+        -RedirectStandardError $errLog `
+        -PassThru
+    }
+    else {
+      $apiProcess = Start-Process -FilePath "dotnet" `
+        -ArgumentList "`"$apiPath`"" `
+        -WorkingDirectory $apiWorkingDirectory `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $outLog `
+        -RedirectStandardError $errLog `
+        -PassThru
+    }
   }
-  else {
-    Start-Process -FilePath "dotnet" `
-      -ArgumentList "`"$apiPath`"" `
-      -WorkingDirectory $apiWorkingDirectory `
-      -WindowStyle Hidden `
-      -RedirectStandardOutput $outLog `
-      -RedirectStandardError $errLog | Out-Null
+  finally {
+    if ($null -eq $previousLocalAiApiUrls) {
+      Remove-Item Env:LOCAL_AI_API_URLS -ErrorAction SilentlyContinue
+    }
+    else {
+      $env:LOCAL_AI_API_URLS = $previousLocalAiApiUrls
+    }
+
+    if ($null -eq $previousAspNetCoreUrls) {
+      Remove-Item Env:ASPNETCORE_URLS -ErrorAction SilentlyContinue
+    }
+    else {
+      $env:ASPNETCORE_URLS = $previousAspNetCoreUrls
+    }
   }
 
-  Wait-HttpOk -Url $ApiHealthUrl -TimeoutSeconds $ApiStartupTimeoutSeconds -Name "ASP.NET API"
+  Wait-HttpOk -Url $ApiReadyUrl -TimeoutSeconds $ApiStartupTimeoutSeconds -Name "ASP.NET API"
+  if ($apiProcess -and $apiProcess.HasExited) {
+    throw "ASP.NET API exited during startup. See $outLog and $errLog."
+  }
+
   if (-not (Test-ApiCompatible)) {
     throw "ASP.NET API started, but required Cloud AI endpoints are not reachable."
+  }
+
+  Start-Sleep -Seconds 1
+  if ($apiProcess -and $apiProcess.HasExited) {
+    throw "ASP.NET API exited after startup checks. See $outLog and $errLog."
   }
 }
 
@@ -289,8 +364,8 @@ function Start-Web {
 Push-Location $RepoRoot
 try {
   Ensure-PublishedApps
-  Start-Api
   Start-Ollama
+  Start-Api
   if (-not $NoWpf) {
     Start-Wpf
   }

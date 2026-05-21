@@ -255,9 +255,85 @@ function getStableOllamaModelNames() {
   return orderedNames;
 }
 
+function getAiModelIdentity(model) {
+  const type = String(model.type ?? model.provider ?? model.typeLabel ?? "model").toLowerCase();
+  const rawName = model.modelId ?? model.name ?? model.id ?? model.key ?? "";
+  const name = String(rawName)
+    .trim()
+    .toLowerCase()
+    .replace(/:latest$/i, "");
+  return `${type}:${name}`;
+}
+
+function splitModelSpecialty(value) {
+  return String(value ?? "")
+    .split("/")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueValues(values) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function isCatalogRoute(route) {
+  const value = String(route ?? "");
+  return value.length > 0 && !/^[a-z]:[\\/]/i.test(value) && !value.startsWith("\\\\");
+}
+
+function shouldPreferModelCandidate(current, candidate) {
+  const currentIsCatalog = isCatalogRoute(current.route);
+  const candidateIsCatalog = isCatalogRoute(candidate.route);
+  if (candidateIsCatalog !== currentIsCatalog) {
+    return candidateIsCatalog;
+  }
+
+  const currentCapabilityCount = current.capabilities?.length ?? splitModelSpecialty(current.specialty).length;
+  const candidateCapabilityCount = candidate.capabilities?.length ?? splitModelSpecialty(candidate.specialty).length;
+  return candidateCapabilityCount > currentCapabilityCount;
+}
+
+function mergeDuplicateAiModel(current, candidate) {
+  const primary = shouldPreferModelCandidate(current, candidate) ? candidate : current;
+  const secondary = primary === current ? candidate : current;
+  const capabilities = uniqueValues([
+    ...(primary.capabilities ?? []),
+    ...(secondary.capabilities ?? []),
+    ...splitModelSpecialty(primary.specialty),
+    ...splitModelSpecialty(secondary.specialty),
+  ]);
+  const expertIds = uniqueValues([
+    ...(primary.expertIds ?? []),
+    primary.expertId,
+    ...(secondary.expertIds ?? []),
+    secondary.expertId,
+  ]);
+
+  return {
+    ...primary,
+    capabilities,
+    specialty: capabilities.length > 0
+      ? capabilities.slice(0, 4).join(" / ")
+      : primary.specialty,
+    expertIds,
+    duplicateCount: Math.max(primary.duplicateCount ?? 1, 1) + Math.max(secondary.duplicateCount ?? 1, 1),
+  };
+}
+
+function dedupeAiModels(models) {
+  const byIdentity = new Map();
+  for (const model of models) {
+    const identity = getAiModelIdentity(model);
+    const existing = byIdentity.get(identity);
+    byIdentity.set(identity, existing ? mergeDuplicateAiModel(existing, model) : model);
+  }
+
+  return Array.from(byIdentity.values());
+}
+
 function getAvailableAiModels() {
   if (state.cloudAiModels.length > 0) {
-    return state.cloudAiModels;
+    return dedupeAiModels(state.cloudAiModels);
   }
 
   const ollamaNames = getStableOllamaModelNames();
@@ -290,7 +366,7 @@ function getAvailableAiModels() {
     runnable: false,
   }));
 
-  return [...ollamaModels, ...dotnetModels];
+  return dedupeAiModels([...ollamaModels, ...dotnetModels]);
 }
 
 function normalizeCloudAIModel(model) {
@@ -392,12 +468,35 @@ async function loadAiMarket() {
 }
 
 function resolveModelPart(partKey) {
-  return getAvailableAiModels().find((model) => model.key === partKey) ?? null;
+  const availableModels = getAvailableAiModels();
+  const directMatch = availableModels.find((model) => model.key === partKey);
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const sourceMatch = state.cloudAiModels.find((model) => model.key === partKey);
+  if (sourceMatch) {
+    return sourceMatch;
+  }
+
+  if (partKey.startsWith("ollama:")) {
+    const modelName = partKey.slice("ollama:".length);
+    return availableModels.find((model) =>
+      model.type === "ollama" &&
+      (model.name === modelName || model.modelId === modelName || model.modelId === `${modelName}:latest`)
+    ) ?? null;
+  }
+
+  return null;
 }
 
 function getExpertIdForModelPart(part) {
   if (!part) {
     return "";
+  }
+
+  if (Array.isArray(part.expertIds) && part.expertIds.length > 0) {
+    return part.expertIds[0];
   }
 
   if (part.expertId) {
@@ -1285,7 +1384,7 @@ function renderDotnetModelList() {
 }
 
 function renderOllamaModelList() {
-  const cloudOllamaModels = state.cloudAiModels.filter((model) => model.type === "ollama");
+  const cloudOllamaModels = getAvailableAiModels().filter((model) => model.type === "ollama");
   if (cloudOllamaModels.length > 0) {
     return cloudOllamaModels.map((item) => {
       const selected = state.model === item.name || state.model === item.modelId;
