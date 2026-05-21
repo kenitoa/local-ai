@@ -9,6 +9,8 @@ Double-click `start-local-ai.cmd` to start the local stack:
 
 Runtime logs are written under `publish/logs`.
 
+First-run rebuilds require the .NET 9 SDK or newer. The launcher targets .NET 9 so it also works on machines that do not have the .NET 10 SDK installed. Manual publish output is self-contained for Windows x64 by default, so a copied `publish/app` can run on another Windows x64 PC without installing the .NET runtime.
+
 If you want the launcher to wait for Ollama before opening the UI, run:
 
 ```powershell
@@ -20,3 +22,7 @@ To refresh the publish output manually, run:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build-publish.ps1 -IncludeWpf
 ```
+
+If packages are already restored and you want a faster local rebuild, add `-NoRestore`.
+
+To create smaller framework-dependent output instead, add `-FrameworkDependent`; that mode requires the target PC to have the .NET 9 runtime installed.

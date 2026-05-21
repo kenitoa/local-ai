@@ -106,17 +106,17 @@ window.discoveredDotnetAis = [{
                    {
                        "label":  "Launch file",
                        "state":  "ok",
-                       "detail":  "bin\\Debug\\net10.0\\ConsoleValidation.exe"
+                       "detail":  "bin\\Debug\\net9.0\\ConsoleValidation.exe"
                    },
                    {
                        "label":  "Runtime config",
                        "state":  "ok",
-                       "detail":  "bin\\Debug\\net10.0\\ConsoleValidation.runtimeconfig.json"
+                       "detail":  "bin\\Debug\\net9.0\\ConsoleValidation.runtimeconfig.json"
                    },
                    {
                        "label":  "Dependency file",
                        "state":  "ok",
-                       "detail":  "bin\\Debug\\net10.0\\ConsoleValidation.deps.json"
+                       "detail":  "bin\\Debug\\net9.0\\ConsoleValidation.deps.json"
                    },
                    {
                        "label":  "App settings",

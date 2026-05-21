@@ -1,9 +1,9 @@
 var candidatePaths = new[]
 {
     Path.Combine(AppContext.BaseDirectory, "Microsoft.ML.OnnxRuntime.dll"),
-    Path.Combine(Directory.GetCurrentDirectory(), "bin", "Debug", "net10.0", "Microsoft.ML.OnnxRuntime.dll"),
+    Path.Combine(Directory.GetCurrentDirectory(), "bin", "Debug", "net9.0", "Microsoft.ML.OnnxRuntime.dll"),
     Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native", "onnxruntime.dll"),
-    Path.Combine(Directory.GetCurrentDirectory(), "bin", "Debug", "net10.0", "runtimes", "win-x64", "native", "onnxruntime.dll")
+    Path.Combine(Directory.GetCurrentDirectory(), "bin", "Debug", "net9.0", "runtimes", "win-x64", "native", "onnxruntime.dll")
 };
 
 var runtimePath = candidatePaths.FirstOrDefault(File.Exists);

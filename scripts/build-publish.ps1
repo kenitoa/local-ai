@@ -1,6 +1,9 @@
 param(
   [string]$Configuration = "Release",
-  [switch]$IncludeWpf
+  [string]$RuntimeIdentifier = "win-x64",
+  [switch]$IncludeWpf,
+  [switch]$FrameworkDependent,
+  [switch]$NoRestore
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +16,29 @@ $WpfOut = Join-Path $AppRoot "wpf"
 $WebSource = Join-Path $RepoRoot "apps\web"
 $WebOut = Join-Path $ApiOut "wwwroot"
 
+function Assert-DotnetSdk {
+  if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    throw "The .NET 9 SDK or newer is required to build missing publish output. Install it from https://dotnet.microsoft.com/download and rerun publish\start-local-ai.cmd."
+  }
+
+  $sdkLines = & dotnet --list-sdks
+  $hasSupportedSdk = $false
+  foreach ($line in $sdkLines) {
+    if ($line -match '^(\d+)\.') {
+      $major = [int]$Matches[1]
+      if ($major -ge 9) {
+        $hasSupportedSdk = $true
+        break
+      }
+    }
+  }
+
+  if (-not $hasSupportedSdk) {
+    $installed = if ($sdkLines) { ($sdkLines -join "; ") } else { "none" }
+    throw "The .NET 9 SDK or newer is required to build missing publish output. Installed SDKs: $installed. Install the .NET 9 SDK or newer and rerun publish\start-local-ai.cmd."
+  }
+}
+
 function Invoke-DotnetPublish {
   param(
     [string]$Project,
@@ -20,12 +46,25 @@ function Invoke-DotnetPublish {
   )
 
   New-Item -ItemType Directory -Force -Path $Output | Out-Null
-  dotnet publish $Project `
-    -c $Configuration `
-    -o $Output `
-    --self-contained false `
-    --no-restore `
-    -v:minimal
+  $publishArgs = @(
+    "publish",
+    $Project,
+    "-c", $Configuration,
+    "-o", $Output,
+    "-v:minimal"
+  )
+  if ($FrameworkDependent) {
+    $publishArgs += @("--self-contained", "false")
+  }
+  else {
+    $publishArgs += @("-r", $RuntimeIdentifier, "--self-contained", "true")
+  }
+
+  if ($NoRestore) {
+    $publishArgs += "--no-restore"
+  }
+
+  dotnet @publishArgs
 
   if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed for $Project"
@@ -34,6 +73,7 @@ function Invoke-DotnetPublish {
 
 Push-Location $RepoRoot
 try {
+  Assert-DotnetSdk
   New-Item -ItemType Directory -Force -Path $PublishRoot | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $PublishRoot "logs") | Out-Null
 
@@ -60,6 +100,12 @@ try {
   Write-Host "- $WebOut"
   if ($IncludeWpf) {
     Write-Host "- $WpfOut"
+  }
+  if ($FrameworkDependent) {
+    Write-Host "- mode: framework-dependent"
+  }
+  else {
+    Write-Host "- mode: self-contained ($RuntimeIdentifier)"
   }
   Write-Host ""
   Write-Host "Run: publish\start-local-ai.cmd"

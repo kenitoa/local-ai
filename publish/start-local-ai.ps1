@@ -256,10 +256,10 @@ function Start-Api {
   $apiCandidates = @(
     (Join-Path $ApiRoot "AspNetAiApi.exe"),
     (Join-Path $ApiRoot "AspNetAiApi.dll"),
-    (Join-Path $RepoRoot "ui\api\bin\Release\net10.0\AspNetAiApi.exe"),
-    (Join-Path $RepoRoot "ui\api\bin\Release\net10.0\AspNetAiApi.dll"),
-    (Join-Path $RepoRoot "ui\api\bin\Debug\net10.0\AspNetAiApi.exe"),
-    (Join-Path $RepoRoot "ui\api\bin\Debug\net10.0\AspNetAiApi.dll")
+    (Join-Path $RepoRoot "ui\api\bin\Release\net9.0\AspNetAiApi.exe"),
+    (Join-Path $RepoRoot "ui\api\bin\Release\net9.0\AspNetAiApi.dll"),
+    (Join-Path $RepoRoot "ui\api\bin\Debug\net9.0\AspNetAiApi.exe"),
+    (Join-Path $RepoRoot "ui\api\bin\Debug\net9.0\AspNetAiApi.dll")
   )
   $apiPath = $apiCandidates |
     Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
@@ -331,8 +331,8 @@ function Start-Api {
 function Start-Wpf {
   $candidatePaths = @(
     (Join-Path $WpfRoot "WpfDesktopMvp.exe"),
-    (Join-Path $RepoRoot "ui\wpf\bin\Release\net10.0-windows\WpfDesktopMvp.exe"),
-    (Join-Path $RepoRoot "ui\wpf\bin\Debug\net10.0-windows\WpfDesktopMvp.exe")
+    (Join-Path $RepoRoot "ui\wpf\bin\Release\net9.0-windows\WpfDesktopMvp.exe"),
+    (Join-Path $RepoRoot "ui\wpf\bin\Debug\net9.0-windows\WpfDesktopMvp.exe")
   )
 
   $wpfExe = $candidatePaths |

@@ -11,7 +11,7 @@
 
 ## Runtime Requirements
 
-- .NET 10 SDK
+- .NET 9 SDK or newer for source builds and first-run publish refreshes
 - Ollama running at `http://localhost:11434`
 - Model configured in `LocalAI.Api/appsettings.json`
 
