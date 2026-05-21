@@ -5,11 +5,15 @@ namespace AspNetAiApi;
 
 public sealed class OllamaClient(HttpClient httpClient)
 {
+    private static readonly TimeSpan StatusTimeout = TimeSpan.FromSeconds(2);
+
     public async Task<string> CheckAsync(CancellationToken cancellationToken)
     {
         try
         {
-            using var response = await httpClient.GetAsync("/api/tags", cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(StatusTimeout);
+            using var response = await httpClient.GetAsync("/api/tags", timeout.Token);
             response.EnsureSuccessStatusCode();
             return "connected";
         }
@@ -23,7 +27,9 @@ public sealed class OllamaClient(HttpClient httpClient)
     {
         try
         {
-            var response = await httpClient.GetFromJsonAsync<OllamaTagsResponse>("/api/tags", cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(StatusTimeout);
+            var response = await httpClient.GetFromJsonAsync<OllamaTagsResponse>("/api/tags", timeout.Token);
             var models = response?.Models?.Select(model => model.Name).Where(name => !string.IsNullOrWhiteSpace(name)).ToList();
             return models is { Count: > 0 } ? models : ["llama3.2"];
         }

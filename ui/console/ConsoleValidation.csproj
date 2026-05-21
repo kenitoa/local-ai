@@ -5,4 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Cloud AI interface\CloudAI.Interface.csproj" />
+  </ItemGroup>
 </Project>

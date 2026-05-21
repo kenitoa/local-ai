@@ -1,7 +1,12 @@
 param(
   [int]$ApiPort = 5088,
   [int]$OllamaStartupTimeoutSeconds = 45,
-  [int]$ApiStartupTimeoutSeconds = 45
+  [int]$ApiStartupTimeoutSeconds = 45,
+  [switch]$WaitForOllama,
+  [switch]$NoWeb,
+  [switch]$LaunchWeb,
+  [switch]$LaunchWpf,
+  [switch]$NoWpf
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,9 +17,14 @@ $AppRoot = Join-Path $PublishRoot "app"
 $ApiRoot = Join-Path $AppRoot "api"
 $WpfRoot = Join-Path $AppRoot "wpf"
 $LogRoot = Join-Path $PublishRoot "logs"
+$WebSource = Join-Path $RepoRoot "apps\web"
+$WebOut = Join-Path $ApiRoot "wwwroot"
 $OllamaStartScript = Join-Path $RepoRoot "runtime\ollama\server\start-server.ps1"
 $BuildPublishScript = Join-Path $RepoRoot "scripts\build-publish.ps1"
 $ApiHealthUrl = "http://localhost:$ApiPort/api/health"
+$ApiCloudInterfaceUrl = "http://localhost:$ApiPort/api/cloud-ai/interface"
+$ApiMarketUrl = "http://localhost:$ApiPort/api/market/models"
+$WebUrl = "http://localhost:$ApiPort/"
 
 New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
 
@@ -24,15 +34,65 @@ function Write-Step {
 }
 
 function Test-HttpOk {
-  param([string]$Url)
+  param(
+    [string]$Url,
+    [int]$TimeoutSeconds = 2
+  )
 
   try {
-    Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 2 | Out-Null
-    return $true
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -Method Get -TimeoutSec $TimeoutSeconds -ErrorAction Stop
+    return ($response.StatusCode -ge 200) -and ($response.StatusCode -lt 300)
   }
   catch {
     return $false
   }
+}
+
+function Test-ApiCompatible {
+  return (Test-HttpOk -Url $ApiHealthUrl) -and
+    (Test-HttpOk -Url $ApiCloudInterfaceUrl) -and
+    (Test-HttpOk -Url $ApiMarketUrl)
+}
+
+function Get-ListeningProcess {
+  try {
+    $connection = Get-NetTCPConnection -LocalPort $ApiPort -State Listen -ErrorAction Stop |
+      Select-Object -First 1
+    if (-not $connection) {
+      return $null
+    }
+
+    return Get-Process -Id $connection.OwningProcess -ErrorAction SilentlyContinue
+  }
+  catch {
+    return $null
+  }
+}
+
+function Stop-IncompatibleRepoApi {
+  $processes = @(Get-Process AspNetAiApi -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase) })
+
+  if ($processes.Count -eq 0) {
+    $process = Get-ListeningProcess
+    if (-not $process) {
+      return
+    }
+
+    $processPath = $process.Path
+    if (-not $processPath -or -not $processPath.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+      throw "Port $ApiPort is already used by a non-local-ai process: $($process.ProcessName) ($($process.Id))"
+    }
+
+    $processes = @($process)
+  }
+
+  foreach ($process in $processes) {
+    Write-Step "stopping incompatible API process $($process.ProcessName) ($($process.Id))"
+    Stop-Process -Id $process.Id -Force
+  }
+
+  Start-Sleep -Seconds 1
 }
 
 function Wait-HttpOk {
@@ -57,10 +117,11 @@ function Wait-HttpOk {
 function Ensure-PublishedApps {
   $apiExe = Join-Path $ApiRoot "AspNetAiApi.exe"
   $apiDll = Join-Path $ApiRoot "AspNetAiApi.dll"
-  $wpfExe = Join-Path $WpfRoot "WpfDesktopMvp.exe"
+  $webIndex = Join-Path $WebOut "index.html"
 
-  if ((Test-Path -LiteralPath $apiExe -PathType Leaf) -and
-      (Test-Path -LiteralPath $wpfExe -PathType Leaf)) {
+  if ((Test-Path -LiteralPath $apiExe -PathType Leaf) -or
+      (Test-Path -LiteralPath $apiDll -PathType Leaf)) {
+    Sync-WebAssets
     return
   }
 
@@ -68,17 +129,48 @@ function Ensure-PublishedApps {
     throw "Publish output is missing and build script was not found: $BuildPublishScript"
   }
 
-  Write-Step "publish output is missing; building API and WPF once"
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $BuildPublishScript
+  Write-Step "publish output is missing; building API and desktop UI once"
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $BuildPublishScript -IncludeWpf
 
   if (-not ((Test-Path -LiteralPath $apiExe -PathType Leaf) -or
             (Test-Path -LiteralPath $apiDll -PathType Leaf))) {
     throw "API publish output was not created in $ApiRoot"
   }
 
-  if (-not (Test-Path -LiteralPath $wpfExe -PathType Leaf)) {
-    throw "WPF publish output was not created in $WpfRoot"
+  Sync-WebAssets
+}
+
+function Sync-WebAssets {
+  $webIndex = Join-Path $WebSource "index.html"
+  if (-not (Test-Path -LiteralPath $webIndex -PathType Leaf)) {
+    throw "Web UI source was not found: $WebSource"
   }
+
+  $sourceFiles = @(
+    (Join-Path $WebSource "index.html"),
+    (Join-Path $WebSource "src")
+  ) | ForEach-Object {
+    Get-ChildItem -LiteralPath $_ -Recurse -File
+  }
+  $destinationIndex = Join-Path $WebOut "index.html"
+  if ((Test-Path -LiteralPath $destinationIndex -PathType Leaf) -and $sourceFiles.Count -gt 0) {
+    $newestSource = ($sourceFiles | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
+    $newestDestination = (Get-ChildItem -LiteralPath $WebOut -Recurse -File |
+      Sort-Object LastWriteTimeUtc -Descending |
+      Select-Object -First 1).LastWriteTimeUtc
+
+    if ($newestDestination -ge $newestSource) {
+      return
+    }
+  }
+
+  if (Test-Path -LiteralPath $WebOut) {
+    Remove-Item -LiteralPath $WebOut -Recurse -Force
+  }
+
+  New-Item -ItemType Directory -Force -Path $WebOut | Out-Null
+  Copy-Item -LiteralPath (Join-Path $WebSource "index.html") -Destination $WebOut -Force
+  Copy-Item -LiteralPath (Join-Path $WebSource "src") -Destination $WebOut -Recurse -Force
 }
 
 function Start-Ollama {
@@ -86,61 +178,128 @@ function Start-Ollama {
     throw "Ollama start script was not found: $OllamaStartScript"
   }
 
-  Write-Step "starting Ollama"
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $OllamaStartScript -Background -StartupTimeoutSeconds $OllamaStartupTimeoutSeconds
+  $startupTimeout = if ($WaitForOllama) { $OllamaStartupTimeoutSeconds } else { 3 }
+  $mode = if ($WaitForOllama) { "waiting up to $startupTimeout seconds" } else { "background, fast startup path" }
+  Write-Step "starting Ollama ($mode)"
+  $ollamaLog = Join-Path $LogRoot "ollama.startup.log"
+  try {
+    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $OllamaStartScript -Background -StartupTimeoutSeconds $startupTimeout 2>&1
+    if ($output) {
+      $output | Out-File -FilePath $ollamaLog -Encoding utf8
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+      Write-Step "Ollama startup returned exit code $LASTEXITCODE; details: $ollamaLog"
+      $global:LASTEXITCODE = 0
+    }
+  }
+  catch {
+    $_ | Out-File -FilePath $ollamaLog -Encoding utf8
+    Write-Step "Ollama startup warning; details: $ollamaLog"
+  }
 }
 
 function Start-Api {
-  if (Test-HttpOk -Url $ApiHealthUrl) {
+  if (Test-ApiCompatible) {
     Write-Step "API is already running at $ApiHealthUrl"
     return
   }
 
-  $apiExe = Join-Path $ApiRoot "AspNetAiApi.exe"
-  $apiDll = Join-Path $ApiRoot "AspNetAiApi.dll"
+  if (Test-HttpOk -Url $ApiHealthUrl) {
+    Write-Step "API is reachable but missing required Cloud AI endpoints"
+    Stop-IncompatibleRepoApi
+  }
+
+  $apiCandidates = @(
+    (Join-Path $ApiRoot "AspNetAiApi.exe"),
+    (Join-Path $ApiRoot "AspNetAiApi.dll"),
+    (Join-Path $RepoRoot "ui\api\bin\Release\net10.0\AspNetAiApi.exe"),
+    (Join-Path $RepoRoot "ui\api\bin\Release\net10.0\AspNetAiApi.dll"),
+    (Join-Path $RepoRoot "ui\api\bin\Debug\net10.0\AspNetAiApi.exe"),
+    (Join-Path $RepoRoot "ui\api\bin\Debug\net10.0\AspNetAiApi.dll")
+  )
+  $apiPath = $apiCandidates |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
   $outLog = Join-Path $LogRoot "api.stdout.log"
   $errLog = Join-Path $LogRoot "api.stderr.log"
   Remove-Item -LiteralPath $outLog, $errLog -Force -ErrorAction SilentlyContinue
 
   Write-Step "starting ASP.NET API on port $ApiPort"
-  if (Test-Path -LiteralPath $apiExe -PathType Leaf) {
-    Start-Process -FilePath $apiExe `
-      -WorkingDirectory $ApiRoot `
-      -WindowStyle Hidden `
-      -RedirectStandardOutput $outLog `
-      -RedirectStandardError $errLog | Out-Null
+  if (-not $apiPath) {
+    throw "API output was not found in publish or ui/api/bin"
   }
-  elseif (Test-Path -LiteralPath $apiDll -PathType Leaf) {
-    Start-Process -FilePath "dotnet" `
-      -ArgumentList "`"$apiDll`"" `
-      -WorkingDirectory $ApiRoot `
+
+  $apiWorkingDirectory = Split-Path -Parent $apiPath
+  if ([IO.Path]::GetExtension($apiPath).Equals(".exe", [StringComparison]::OrdinalIgnoreCase)) {
+    Start-Process -FilePath $apiPath `
+      -WorkingDirectory $apiWorkingDirectory `
       -WindowStyle Hidden `
       -RedirectStandardOutput $outLog `
       -RedirectStandardError $errLog | Out-Null
   }
   else {
-    throw "API publish output was not found in $ApiRoot"
+    Start-Process -FilePath "dotnet" `
+      -ArgumentList "`"$apiPath`"" `
+      -WorkingDirectory $apiWorkingDirectory `
+      -WindowStyle Hidden `
+      -RedirectStandardOutput $outLog `
+      -RedirectStandardError $errLog | Out-Null
   }
 
   Wait-HttpOk -Url $ApiHealthUrl -TimeoutSeconds $ApiStartupTimeoutSeconds -Name "ASP.NET API"
+  if (-not (Test-ApiCompatible)) {
+    throw "ASP.NET API started, but required Cloud AI endpoints are not reachable."
+  }
 }
 
 function Start-Wpf {
-  $wpfExe = Join-Path $WpfRoot "WpfDesktopMvp.exe"
-  if (-not (Test-Path -LiteralPath $wpfExe -PathType Leaf)) {
-    throw "WPF publish output was not found: $wpfExe"
+  $candidatePaths = @(
+    (Join-Path $WpfRoot "WpfDesktopMvp.exe"),
+    (Join-Path $RepoRoot "ui\wpf\bin\Release\net10.0-windows\WpfDesktopMvp.exe"),
+    (Join-Path $RepoRoot "ui\wpf\bin\Debug\net10.0-windows\WpfDesktopMvp.exe")
+  )
+
+  $wpfExe = $candidatePaths |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
+
+  if (-not $wpfExe) {
+    Write-Step "WPF desktop output was not found; skipping desktop UI"
+    return
   }
 
-  Write-Step "opening WPF desktop UI"
-  Start-Process -FilePath $wpfExe -WorkingDirectory $WpfRoot | Out-Null
+  $workingDirectory = Split-Path -Parent $wpfExe
+  Write-Step "opening Windows desktop UI"
+  Start-Process -FilePath $wpfExe -WorkingDirectory $workingDirectory | Out-Null
+}
+
+function Start-Web {
+  $webIndex = Join-Path $WebOut "index.html"
+  if (Test-Path -LiteralPath $webIndex -PathType Leaf) {
+    Write-Step "opening Web UI at $webIndex"
+    Start-Process -FilePath $webIndex | Out-Null
+    return
+  }
+
+  Write-Step "opening Web UI at $WebUrl"
+  Start-Process -FilePath $WebUrl | Out-Null
 }
 
 Push-Location $RepoRoot
 try {
   Ensure-PublishedApps
-  Start-Ollama
   Start-Api
-  Start-Wpf
+  Start-Ollama
+  if (-not $NoWpf) {
+    Start-Wpf
+  }
+  elseif ($LaunchWpf) {
+    Start-Wpf
+  }
+  if ($LaunchWeb -and -not $NoWeb) {
+    Start-Web
+  }
   Write-Step "ready"
 }
 finally {

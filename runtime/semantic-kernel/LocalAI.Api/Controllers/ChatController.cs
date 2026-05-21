@@ -1,3 +1,4 @@
+using LocalAI.CloudInterface;
 using LocalAI.Core.AI;
 using LocalAI.Core.Rag;
 using LocalAI.OllamaConnector;
@@ -9,8 +10,7 @@ namespace LocalAI.Api.Controllers;
 [ApiController]
 [Route("api")]
 public sealed class ChatController(
-    IChatService chatService,
-    IStreamingChatService streamingChatService,
+    ICloudAI cloudAi,
     IChatSessionStore sessions,
     IRagService rag,
     AiModelOptions modelOptions,
@@ -23,8 +23,11 @@ public sealed class ChatController(
     {
         try
         {
-            var response = await chatService.SendAsync(request, cancellationToken);
-            return Ok(response);
+            var response = await InvokeCloudAiAsync(cloudAi, request, cancellationToken);
+            return Ok(new ChatResponse(
+                string.IsNullOrWhiteSpace(request.SessionId) ? Guid.NewGuid().ToString("N") : request.SessionId,
+                response.Output,
+                DateTime.Now));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -53,8 +56,10 @@ public sealed class ChatController(
 
         try
         {
-            await foreach (var chunk in streamingChatService.StreamAsync(request, cancellationToken))
+            var response = await InvokeCloudAiAsync(cloudAi, request, cancellationToken);
+            foreach (var chunk in response.Output.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await WriteSseDataAsync(Response, chunk, cancellationToken);
                 await Response.Body.FlushAsync(cancellationToken);
             }
@@ -74,6 +79,55 @@ public sealed class ChatController(
                 cancellationToken);
             await Response.Body.FlushAsync(cancellationToken);
         }
+    }
+
+    private static async Task<CloudAIResponse> InvokeCloudAiAsync(
+        ICloudAI cloudAi,
+        ChatRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var sessionId = string.IsNullOrWhiteSpace(request.SessionId)
+            ? Guid.NewGuid().ToString("N")
+            : request.SessionId.Trim();
+        var preferredExperts = string.IsNullOrWhiteSpace(request.Model)
+            ? Array.Empty<string>()
+            : [ToOllamaExpertId(request.Model)];
+
+        return await cloudAi.InvokeAsync(new CloudAIRequest
+        {
+            RequestId = Guid.NewGuid().ToString("N"),
+            UserId = "local-ai-api",
+            Input = request.Message,
+            TaskType = "chat",
+            SharedContext = new RuntimeContext { SessionId = sessionId },
+            Options = new RuntimeOptions
+            {
+                PreferredExperts = preferredExperts,
+                RequireVerification = true
+            }
+        });
+    }
+
+    private static string ToOllamaExpertId(string model)
+    {
+        var normalized = model.ToLowerInvariant()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')
+            .ToArray();
+
+        var id = new string(normalized).Trim('-');
+        while (id.Contains("--", StringComparison.Ordinal))
+        {
+            id = id.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        if (!id.EndsWith("-latest", StringComparison.OrdinalIgnoreCase) && !model.Contains(':', StringComparison.Ordinal))
+        {
+            id += "-latest";
+        }
+
+        return $"ollama-{id}";
     }
 
     [HttpPost("session")]

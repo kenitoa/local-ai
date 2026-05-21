@@ -1,142 +1,186 @@
-using System.Collections.ObjectModel;
+using System.IO;
+using System.Text;
 using System.Windows;
-using Microsoft.Win32;
+using Microsoft.Web.WebView2.Core;
 
 namespace WpfDesktopMvp;
 
 public partial class MainWindow : Window
 {
-    private readonly ObservableCollection<ChatMessageView> chatMessages = new();
-    private readonly ObservableCollection<string> logs = new();
-    private readonly DesktopApiClient apiClient = new();
-    private string? sessionId;
+    private const string DesktopHost = "local-ai.desktop";
 
     public MainWindow()
     {
         InitializeComponent();
-        ChatItems.ItemsSource = chatMessages;
-        LogItems.ItemsSource = logs;
-        AddChat("system", "WPF -> HttpClient -> ASP.NET API 구조로 실행됩니다.");
-        AddLog("WPF MVP가 시작되었습니다.");
+        Loaded += MainWindow_Loaded;
     }
 
-    private async void HealthButton_Click(object sender, RoutedEventArgs e)
-    {
-        await RunApiActionAsync("상태 확인", async () =>
-        {
-            var health = await apiClient.GetHealthAsync(ApiBaseUrlBox.Text);
-            AddLog($"API={health.Api}, Provider={health.Provider}, Model={health.ModelId}, Endpoint={health.Endpoint}, Installed={health.ModelInstalled}");
-        });
-    }
-
-    private async void LoadModelsButton_Click(object sender, RoutedEventArgs e)
-    {
-        await RunApiActionAsync("모델 목록", async () =>
-        {
-            var models = await apiClient.GetModelsAsync(ApiBaseUrlBox.Text);
-            ModelCombo.ItemsSource = models;
-            if (models.Count > 0)
-            {
-                ModelCombo.Text = models[0];
-            }
-
-            AddLog($"모델 {models.Count}개를 읽었습니다.");
-        });
-    }
-
-    private async void NewSessionButton_Click(object sender, RoutedEventArgs e)
-    {
-        await RunApiActionAsync("새 세션", async () =>
-        {
-            var session = await apiClient.CreateSessionAsync(ApiBaseUrlBox.Text, "WPF desktop session");
-            sessionId = session.SessionId;
-            chatMessages.Clear();
-            AddChat("system", $"새 세션이 생성되었습니다: {session.SessionId}");
-            AddLog($"새 세션: {session.SessionId}");
-        });
-    }
-
-    private async void SendButton_Click(object sender, RoutedEventArgs e)
-    {
-        var prompt = PromptBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            AddLog("전송할 메시지가 없습니다.");
-            return;
-        }
-
-        await RunApiActionAsync("채팅", async () =>
-        {
-            AddChat("user", prompt);
-            var model = string.IsNullOrWhiteSpace(ModelCombo.Text) ? "llama3.1" : ModelCombo.Text.Trim();
-            var response = await apiClient.SendChatAsync(ApiBaseUrlBox.Text, sessionId, model, prompt);
-            sessionId = response.SessionId;
-            AddChat("assistant", response.Message);
-            AddLog($"채팅 응답 수신: {response.CreatedAt:HH:mm:ss}");
-        });
-    }
-
-    private async void ToolButton_Click(object sender, RoutedEventArgs e)
-    {
-        await RunApiActionAsync("도구 실행", async () =>
-        {
-            var result = await apiClient.ExecuteToolAsync(ApiBaseUrlBox.Text, "time", "");
-            AddLog(result.Success ? $"time={result.Result}" : $"도구 실패: {result.Error}");
-        });
-    }
-
-    private void SelectFileButton_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "분석할 파일 선택",
-            Filter = "All files (*.*)|*.*"
-        };
-
-        if (dialog.ShowDialog(this) == true)
-        {
-            SelectedFileText.Text = dialog.FileName;
-            AddLog($"파일 선택: {dialog.FileName}");
-        }
-    }
-
-    private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        AddLog($"설정 저장: API={ApiBaseUrlBox.Text}, NAS={NasPathBox.Text}");
-    }
-
-    private async Task RunApiActionAsync(string name, Func<Task> action)
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
-            SetBusy(true);
-            AddLog($"{name} 요청 시작");
-            await action();
+            var webRoot = FindWebRoot();
+            var logPath = ResolveWebViewLogPath();
+            LoadingText.Text = $"loading {webRoot}";
+
+            var userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "LocalAI",
+                "WebView2");
+            Directory.CreateDirectory(userDataFolder);
+
+            var environment = await CoreWebView2Environment.CreateAsync(
+                browserExecutableFolder: null,
+                userDataFolder: userDataFolder);
+
+            await DesktopWebView.EnsureCoreWebView2Async(environment);
+            ConfigureWebView(webRoot, logPath);
+
+            DesktopWebView.CoreWebView2.NavigationCompleted += (_, args) =>
+            {
+                if (args.IsSuccess)
+                {
+                    AppendLog(logPath, "navigation completed");
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                AppendLog(logPath, $"navigation failed: {args.WebErrorStatus}");
+                LoadingText.Text = $"desktop interface failed to load: {args.WebErrorStatus}";
+            };
+
+            DesktopWebView.Source = new Uri($"https://{DesktopHost}/index.html");
         }
         catch (Exception ex)
         {
-            AddLog($"{name} 실패: {ex.Message}");
+            LoadingText.Text = $"desktop interface failed to start: {ex.Message}";
         }
-        finally
+    }
+
+    private void ConfigureWebView(string webRoot, string logPath)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+        AppendLog(logPath, $"web root: {webRoot}");
+
+        DesktopWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+            DesktopHost,
+            webRoot,
+            CoreWebView2HostResourceAccessKind.Allow);
+
+        DesktopWebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+        DesktopWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+        DesktopWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+
+        DesktopWebView.CoreWebView2.WebMessageReceived += (_, args) =>
         {
-            SetBusy(false);
+            AppendLog(logPath, $"web message: {args.TryGetWebMessageAsString()}");
+        };
+
+        _ = DesktopWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("""
+            (() => {
+              const send = (level, message) => {
+                try {
+                  chrome.webview.postMessage(`[${level}] ${String(message)}`);
+                } catch {}
+              };
+              const originalError = console.error.bind(console);
+              console.error = (...args) => {
+                send("console.error", args.map(String).join(" "));
+                originalError(...args);
+              };
+              window.addEventListener("error", (event) => {
+                send("error", `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`);
+              });
+              window.addEventListener("unhandledrejection", (event) => {
+                send("unhandledrejection", event.reason?.message || event.reason || "unknown rejection");
+              });
+            })();
+            """);
+
+        DesktopWebView.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+        DesktopWebView.CoreWebView2.WebResourceResponseReceived += async (_, args) =>
+        {
+            try
+            {
+                var statusCode = args.Response.StatusCode;
+                if (statusCode >= 400)
+                {
+                    AppendLog(logPath, $"resource {statusCode}: {args.Request.Uri}");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog(logPath, $"resource log failed: {ex.Message}");
+            }
+
+            await Task.CompletedTask;
+        };
+    }
+
+    private static string FindWebRoot()
+    {
+        var candidates = GetBaseDirectories()
+            .SelectMany(baseDirectory => new[]
+            {
+                Path.Combine(baseDirectory, "apps", "web"),
+                Path.Combine(baseDirectory, "publish", "app", "api", "wwwroot"),
+                Path.Combine(baseDirectory, "app", "api", "wwwroot"),
+                Path.Combine(baseDirectory, "wwwroot")
+            })
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(Path.Combine(candidate, "index.html")))
+            {
+                return Path.GetFullPath(candidate);
+            }
         }
+
+        throw new FileNotFoundException(
+            "apps/web/index.html or publish/app/api/wwwroot/index.html was not found.");
     }
 
-    private void SetBusy(bool busy)
+    private static string ResolveWebViewLogPath()
     {
-        SendButton.IsEnabled = !busy;
-        HealthButton.IsEnabled = !busy;
+        foreach (var directory in GetBaseDirectories())
+        {
+            var publishRoot = Path.Combine(directory, "publish");
+            if (Directory.Exists(publishRoot))
+            {
+                return Path.Combine(publishRoot, "logs", "wpf.webview.log");
+            }
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "LocalAI",
+            "logs",
+            "wpf.webview.log");
     }
 
-    private void AddChat(string role, string content)
+    private static void AppendLog(string logPath, string message)
     {
-        chatMessages.Add(new ChatMessageView(role, content));
-        ChatScroll.ScrollToEnd();
+        var line = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz}] {message}{Environment.NewLine}";
+        File.AppendAllText(logPath, line, Encoding.UTF8);
     }
 
-    private void AddLog(string message)
+    private static IEnumerable<string> GetBaseDirectories()
     {
-        logs.Insert(0, $"[{DateTime.Now:HH:mm:ss}] {message}");
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var start in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+        {
+            var directory = new DirectoryInfo(start);
+            while (directory is not null)
+            {
+                var fullName = directory.FullName;
+                if (seen.Add(fullName))
+                {
+                    yield return fullName;
+                }
+
+                directory = directory.Parent;
+            }
+        }
     }
 }

@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\Cloud AI interface\CloudAI.Interface.csproj" />
     <ProjectReference Include="..\LocalAI.Core\LocalAI.Core.csproj" />
     <ProjectReference Include="..\..\ollama\connector\LocalAI.OllamaConnector.csproj" />
   </ItemGroup>

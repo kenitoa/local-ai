@@ -9,6 +9,7 @@ node_modules/
 dist/
 publish/app/
 publish/logs/
+data/projects/
 
 runtime/ollama/server/benchmark-results*.json
 runtime/ollama/server/final-validation-report*.json

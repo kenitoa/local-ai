@@ -1,4 +1,6 @@
+using LocalAI.CloudInterface;
 using AspNetAiApi;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +24,11 @@ builder.Services.AddSingleton<SessionStore>();
 builder.Services.AddSingleton<PromptManager>();
 builder.Services.AddSingleton<PluginExecutor>();
 builder.Services.AddSingleton<RagSearchService>();
+builder.Services.AddSingleton<ProjectFolderService>();
+builder.Services.AddSingleton<CloudAIInterfaceCatalogService>();
+builder.Services.AddHttpClient<AiMarketService>();
+builder.Services.AddScoped<ICloudAI>(_ =>
+    CloudAIServiceFactory.CreateAsync(CloudAIOptionsFactory.Create()).GetAwaiter().GetResult());
 builder.Services.AddScoped<KernelGateway>();
 builder.Services.AddScoped<ChatService>();
 
@@ -29,7 +36,17 @@ var app = builder.Build();
 
 app.UseCors();
 
-app.MapGet("/", () => Results.Redirect("/api/health"));
+var webRoot = ResolveWebRoot();
+if (webRoot is not null)
+{
+    var webFiles = new PhysicalFileProvider(webRoot);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = webFiles });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = webFiles });
+}
+
+app.MapGet("/", () => webRoot is null
+    ? Results.Redirect("/api/health")
+    : Results.File(Path.Combine(webRoot, "index.html"), "text/html"));
 
 app.MapGet("/api/health", async (OllamaClient ollama, CancellationToken cancellationToken) =>
 {
@@ -51,6 +68,149 @@ app.MapGet("/api/models", async (OllamaClient ollama, CancellationToken cancella
 {
     var models = await ollama.ListModelsAsync(cancellationToken);
     return Results.Ok(new ModelsResponse(models));
+});
+
+app.MapGet("/api/cloud-ai/interface", async (
+    CloudAIInterfaceCatalogService cloudAiInterface,
+    CancellationToken cancellationToken) =>
+{
+    return Results.Ok(await cloudAiInterface.GetAsync(cancellationToken));
+});
+
+app.MapPost("/api/cloud-ai/compositions", async (
+    CloudAICompositionCreateRequest request,
+    CloudAIInterfaceCatalogService cloudAiInterface,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var composition = await cloudAiInterface.CreateCompositionAsync(request, cancellationToken);
+        return Results.Created($"/api/cloud-ai/compositions/{Uri.EscapeDataString(composition.Id)}", composition);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+});
+
+app.MapGet("/api/market/models", (AiMarketService market) =>
+{
+    return Results.Ok(new AiMarketModelsResponse(market.List()));
+});
+
+app.MapPost("/api/market/models/{id}/download", async (
+    string id,
+    AiMarketService market,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await market.DownloadAsync(id, cancellationToken));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+});
+
+app.MapDelete("/api/market/models/{id}", async (
+    string id,
+    AiMarketService market,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await market.DeleteAsync(id, cancellationToken));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+});
+
+app.MapGet("/api/projects", (ProjectFolderService projects) =>
+{
+    return Results.Ok(new ProjectFoldersResponse(projects.List()));
+});
+
+app.MapPost("/api/projects", (ProjectFolderService projects, ProjectFolderCreateRequest request) =>
+{
+    try
+    {
+        var project = projects.Create(request.Name);
+        return Results.Created($"/api/projects/{Uri.EscapeDataString(project.Name)}", project);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+});
+
+app.MapDelete("/api/projects/{name}", (ProjectFolderService projects, string name) =>
+{
+    try
+    {
+        return projects.Delete(name)
+            ? Results.NoContent()
+            : Results.NotFound(new { error = "프로젝트 폴더를 찾을 수 없습니다." });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPatch("/api/projects/{name}", (ProjectFolderService projects, string name, ProjectFolderRenameRequest request) =>
+{
+    try
+    {
+        return Results.Ok(projects.Rename(name, request.Name));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (DirectoryNotFoundException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/projects/{name}/chats", (ProjectFolderService projects, string name, ProjectChatCreateRequest request) =>
+{
+    try
+    {
+        var chat = projects.CreateChat(name, request.Title);
+        return Results.Created($"/api/projects/{Uri.EscapeDataString(name)}/chats/{chat.Id}", chat);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (DirectoryNotFoundException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
 });
 
 app.MapPost("/api/chat", async (
@@ -88,3 +248,27 @@ app.MapPost("/api/tools/execute", (ToolExecuteRequest request, PluginExecutor to
 });
 
 app.Run();
+
+static string? ResolveWebRoot()
+{
+    var contentRoot = Directory.GetCurrentDirectory();
+    var publishedWebRoot = Path.Combine(contentRoot, "wwwroot");
+    if (File.Exists(Path.Combine(publishedWebRoot, "index.html")))
+    {
+        return publishedWebRoot;
+    }
+
+    var current = new DirectoryInfo(contentRoot);
+    while (current is not null)
+    {
+        var sourceWebRoot = Path.Combine(current.FullName, "apps", "web");
+        if (File.Exists(Path.Combine(sourceWebRoot, "index.html")))
+        {
+            return sourceWebRoot;
+        }
+
+        current = current.Parent;
+    }
+
+    return null;
+}
