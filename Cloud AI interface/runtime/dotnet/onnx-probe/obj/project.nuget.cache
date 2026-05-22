@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "0j4XAxG2hUs=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\dotnet\\onnx-probe\\OnnxRuntimeProbe.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.netcore.app.ref\\9.0.15\\microsoft.netcore.app.ref.9.0.15.nupkg.sha512",
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\9.0.15\\microsoft.windowsdesktop.app.ref.9.0.15.nupkg.sha512",
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\9.0.15\\microsoft.aspnetcore.app.ref.9.0.15.nupkg.sha512",
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\9.0.15\\microsoft.netcore.app.host.win-x64.9.0.15.nupkg.sha512"
+  ],
+  "logs": []
+}

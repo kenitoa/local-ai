@@ -1,0 +1,44 @@
+{
+  "policies": [
+    {
+      "expertId": "dotnet-code-expert",
+      "permissions": {
+        "canAccessInternet": false,
+        "canReadFiles": true,
+        "canWriteFiles": false,
+        "canCallExternalApi": false,
+        "canUseTools": true,
+        "canReceiveUserData": true,
+        "canReceiveSensitiveData": false,
+        "runInSandbox": true,
+        "allowedTools": ["read-file", "analyze-code"]
+      }
+    },
+    {
+      "expertId": "external-api-model",
+      "permissions": {
+        "canAccessInternet": true,
+        "canReadFiles": false,
+        "canWriteFiles": false,
+        "canCallExternalApi": true,
+        "canUseTools": false,
+        "canReceiveUserData": true,
+        "canReceiveSensitiveData": false,
+        "runInSandbox": true
+      }
+    },
+    {
+      "expertId": "rule-based-response",
+      "permissions": {
+        "canAccessInternet": false,
+        "canReadFiles": false,
+        "canWriteFiles": false,
+        "canCallExternalApi": false,
+        "canUseTools": false,
+        "canReceiveUserData": false,
+        "canReceiveSensitiveData": false,
+        "runInSandbox": true
+      }
+    }
+  ]
+}

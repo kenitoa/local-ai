@@ -1,0 +1,44 @@
+{
+  "compositions": [
+    {
+      "compositionId": "general-chat-v1",
+      "experts": ["ollama-llama3-korean"],
+      "strategy": "single",
+      "fallback": ["reasoning-llm"]
+    },
+    {
+      "compositionId": "code-pipeline-v1",
+      "experts": ["dotnet-code-expert", "reasoning-llm", "judge-model"],
+      "strategy": "pipeline",
+      "fallback": ["ollama-llama3-korean"],
+      "requiresJudge": true
+    },
+    {
+      "compositionId": "korean-reasoning-v1",
+      "experts": [
+        "mlnet-intent-classifier",
+        "ollama-llama3-korean",
+        "reasoning-llm",
+        "judge-model"
+      ],
+      "strategy": "parallel-judge",
+      "fallback": ["ollama-llama3-korean"],
+      "requiresJudge": true,
+      "runInParallel": true
+    },
+    {
+      "compositionId": "parallel-vote-code-v1",
+      "experts": ["dotnet-code-expert", "reasoning-llm", "ollama-llama3-korean"],
+      "strategy": "parallel-vote",
+      "fallback": ["judge-model"],
+      "requiresJudge": true,
+      "runInParallel": true
+    },
+    {
+      "compositionId": "fallback-classify-v1",
+      "experts": ["mlnet-intent-classifier"],
+      "strategy": "fallback-chain",
+      "fallback": ["ollama-llama3-korean", "reasoning-llm"]
+    }
+  ]
+}

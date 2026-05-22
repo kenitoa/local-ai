@@ -1,0 +1,8 @@
+﻿{
+  "name": "ASP.NET API",
+  "version": "0.1.0",
+  "model": "ASP.NET Core + runtime/semantic-kernel adapter + Ollama",
+  "memory": "In-memory ChatSession store",
+  "specialty": "Core API separation layer",
+  "purpose": "Separates AI features from UI clients through HTTP endpoints for chat, streaming, sessions, models, health, RAG search, and tool execution."
+}

@@ -1,0 +1,145 @@
+{
+  "experts": [
+    {
+      "id": "ollama-llama3-korean",
+      "provider": "ollama",
+      "type": "llm",
+      "capabilities": ["chat", "korean", "reasoning"],
+      "priority": 10,
+      "costScore": 1.0,
+      "latencyScore": 0.7,
+      "qualityScore": 0.8,
+      "requiredMemoryMb": 4096,
+      "supportsStreaming": true,
+      "supportsJsonOutput": true,
+      "endpoint": "http://localhost:11434",
+      "keepAlive": true,
+      "settings": {
+        "modelId": "llama3.1:latest",
+        "serviceId": "cloud-ai-ollama-llama3-korean"
+      }
+    },
+    {
+      "id": "reasoning-llm",
+      "provider": "ollama",
+      "type": "llm",
+      "capabilities": ["reasoning", "summarization", "planning"],
+      "priority": 12,
+      "costScore": 1.0,
+      "latencyScore": 0.72,
+      "qualityScore": 0.78,
+      "requiredMemoryMb": 4096,
+      "supportsStreaming": true,
+      "supportsJsonOutput": true,
+      "endpoint": "http://localhost:11434",
+      "keepAlive": true,
+      "settings": {
+        "modelId": "qwen2.5:latest",
+        "serviceId": "cloud-ai-reasoning-llm"
+      }
+    },
+    {
+      "id": "ollama-local-assistant",
+      "provider": "ollama",
+      "type": "llm",
+      "capabilities": ["chat", "reasoning", "korean"],
+      "priority": 11,
+      "costScore": 1.0,
+      "latencyScore": 0.75,
+      "qualityScore": 0.76,
+      "requiredMemoryMb": 4096,
+      "supportsStreaming": true,
+      "supportsJsonOutput": true,
+      "endpoint": "http://localhost:11434",
+      "keepAlive": true,
+      "settings": {
+        "modelId": "local-assistant:latest",
+        "serviceId": "cloud-ai-local-assistant"
+      }
+    },
+    {
+      "id": "ollama-nomic-embed-text",
+      "provider": "ollama",
+      "type": "embedding",
+      "capabilities": ["embedding", "search", "vector-memory"],
+      "priority": 25,
+      "costScore": 1.0,
+      "latencyScore": 0.85,
+      "qualityScore": 0.72,
+      "requiredMemoryMb": 1024,
+      "supportsStreaming": false,
+      "supportsJsonOutput": true,
+      "endpoint": "http://localhost:11434",
+      "keepAlive": true,
+      "settings": {
+        "modelId": "nomic-embed-text:latest",
+        "serviceId": "cloud-ai-nomic-embed-text"
+      }
+    },
+    {
+      "id": "mlnet-intent-classifier",
+      "provider": "mlnet",
+      "type": "classifier",
+      "capabilities": ["intent-classification"],
+      "priority": 20,
+      "costScore": 1.0,
+      "latencyScore": 0.95,
+      "qualityScore": 0.65,
+      "requiredMemoryMb": 512,
+      "supportsStreaming": false,
+      "supportsJsonOutput": true
+    },
+    {
+      "id": "dotnet-code-expert",
+      "provider": "custom-dotnet",
+      "type": "custom",
+      "capabilities": ["code", "planning", "rules"],
+      "priority": 15,
+      "costScore": 1.0,
+      "latencyScore": 0.9,
+      "qualityScore": 0.72,
+      "requiredMemoryMb": 256,
+      "supportsStreaming": false,
+      "supportsJsonOutput": true
+    },
+    {
+      "id": "judge-model",
+      "provider": "custom-dotnet",
+      "type": "judge",
+      "capabilities": ["judge", "verification", "classification"],
+      "priority": 30,
+      "costScore": 1.0,
+      "latencyScore": 0.8,
+      "qualityScore": 0.78,
+      "requiredMemoryMb": 512,
+      "supportsStreaming": false,
+      "supportsJsonOutput": true
+    },
+    {
+      "id": "external-api-model",
+      "provider": "external-api",
+      "type": "llm",
+      "capabilities": ["chat", "reasoning", "summarization"],
+      "priority": 50,
+      "costScore": 0.35,
+      "latencyScore": 0.6,
+      "qualityScore": 0.88,
+      "requiredMemoryMb": 0,
+      "supportsStreaming": true,
+      "supportsJsonOutput": true
+    },
+    {
+      "id": "rule-based-response",
+      "provider": "rule-based",
+      "type": "fallback",
+      "capabilities": ["fallback", "safe-response"],
+      "priority": 1000,
+      "costScore": 1.0,
+      "latencyScore": 1.0,
+      "qualityScore": 0.35,
+      "requiredMemoryMb": 0,
+      "supportsStreaming": false,
+      "supportsJsonOutput": true
+    }
+  ]
+}
