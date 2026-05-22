@@ -1,0 +1,6 @@
+Starting Ollama server in the background...
+OLLAMA_CLI=C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\ollama\server\cli\ollama.exe
+OLLAMA_HOST=127.0.0.1:11434
+OLLAMA_HOME=C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\ollama\server\home
+OLLAMA_MODELS=C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\ollama\server\models
+OLLAMA_CONTEXT_LENGTH=4096

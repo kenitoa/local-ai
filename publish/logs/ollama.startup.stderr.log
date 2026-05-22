@@ -1,0 +1,8 @@
+Ollama server did not become reachable within 3 seconds.
+위치 C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\ollama\server\start-server.ps1:9
+9 문자:1
++ throw "Ollama server did not become reachable within $StartupTimeoutS ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Ollama server d...thin 3 seconds.:String) [], RuntimeException
+    + FullyQualifiedErrorId : Ollama server did not become reachable within 3 seconds.
+ 

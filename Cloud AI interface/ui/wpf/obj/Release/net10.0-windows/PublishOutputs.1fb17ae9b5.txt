@@ -1,0 +1,14 @@
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\WpfDesktopMvp.exe
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\runtimes\win-x86\native\WebView2Loader.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\runtimes\win-arm64\native\WebView2Loader.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\WpfDesktopMvp.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\WpfDesktopMvp.deps.json
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\WpfDesktopMvp.runtimeconfig.json
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\WpfDesktopMvp.pdb
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\Microsoft.Web.WebView2.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\Microsoft.Web.WebView2.WinForms.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\Microsoft.Web.WebView2.Wpf.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\Microsoft.Web.WebView2.Core.xml
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\Microsoft.Web.WebView2.WinForms.xml
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\wpf\Microsoft.Web.WebView2.Wpf.xml

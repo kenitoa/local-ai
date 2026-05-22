@@ -1,0 +1,27 @@
+{
+  "chains": [
+    {
+      "primary": "ollama-large-reasoner",
+      "fallback": [
+        "ollama-small-reasoner",
+        "external-api-model",
+        "rule-based-response"
+      ]
+    },
+    {
+      "primary": "reasoning-llm",
+      "fallback": [
+        "ollama-llama3-korean",
+        "rule-based-response"
+      ]
+    },
+    {
+      "primary": "dotnet-code-expert",
+      "fallback": [
+        "reasoning-llm",
+        "ollama-llama3-korean",
+        "rule-based-response"
+      ]
+    }
+  ]
+}
