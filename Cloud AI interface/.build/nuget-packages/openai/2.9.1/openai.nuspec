@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>OpenAI</id>
+    <version>2.9.1</version>
+    <authors>OpenAI</authors>
+    <requireLicenseAcceptance>true</requireLicenseAcceptance>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <icon>OpenAI.png</icon>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/openai/openai-dotnet/tree/OpenAI_2.9.1</projectUrl>
+    <description>The official .NET library for the OpenAI service API.</description>
+    <releaseNotes>https://github.com/openai/openai-dotnet/blob/OpenAI_2.9.1/CHANGELOG.md</releaseNotes>
+    <copyright>Copyright (c) 2026 OpenAI (https://openai.com)</copyright>
+    <tags>OpenAI openai-dotnet ChatGPT Dall-E</tags>
+    <repository type="git" url="https://github.com/openai/openai-dotnet" commit="78f5ad061fc95fe2f9eeb38fbb339cad66d5568d" />
+    <dependencies>
+      <group targetFramework="net8.0">
+        <dependency id="System.ClientModel" version="1.9.0" exclude="Build,Analyzers" />
+        <dependency id="System.Net.ServerSentEvents" version="10.0.2" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework="net10.0">
+        <dependency id="System.ClientModel" version="1.9.0" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework=".NETStandard2.0">
+        <dependency id="System.ClientModel" version="1.9.0" exclude="Build,Analyzers" />
+        <dependency id="System.Diagnostics.DiagnosticSource" version="10.0.2" exclude="Build,Analyzers" />
+        <dependency id="System.Net.ServerSentEvents" version="10.0.2" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

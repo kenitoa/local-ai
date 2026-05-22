@@ -1,0 +1,110 @@
+﻿{
+    "timestamp":  "2026-05-19T22:44:41.1743593+09:00",
+    "repoRoot":  "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai",
+    "endpoint":  "http://localhost:11434",
+    "modelId":  "local-assistant",
+    "summary":  {
+                    "pass":  15,
+                    "warn":  1,
+                    "fail":  0,
+                    "skip":  0
+                },
+    "checks":  [
+                   {
+                       "area":  "1-2",
+                       "name":  "Ollama CLI",
+                       "status":  "pass",
+                       "message":  "local ollama found: C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\ollama\\server\\cli\\ollama.exe"
+                   },
+                   {
+                       "area":  "1-2",
+                       "name":  "ollama --version",
+                       "status":  "pass",
+                       "message":  "ollama version is 0.24.0"
+                   },
+                   {
+                       "area":  "3",
+                       "name":  "Selected model list",
+                       "status":  "pass",
+                       "message":  "models.selected.txt contains 3 model(s): nomic-embed-text, qwen2.5, llama3.1"
+                   },
+                   {
+                       "area":  "11",
+                       "name":  "Modelfile",
+                       "status":  "pass",
+                       "message":  "Modelfile contains FROM, PARAMETER num_ctx, and SYSTEM."
+                   },
+                   {
+                       "area":  "5",
+                       "name":  "/api/tags",
+                       "status":  "pass",
+                       "message":  "Server reachable. Installed models: local-assistant:latest, qwen2.5:latest, nomic-embed-text:latest, llama3.1:latest"
+                   },
+                   {
+                       "area":  "4,6,12,16",
+                       "name":  "Configured model installed",
+                       "status":  "pass",
+                       "message":  "local-assistant exists in /api/tags."
+                   },
+                   {
+                       "area":  "6",
+                       "name":  "/api/chat",
+                       "status":  "pass",
+                       "message":  "네, 네트워크 장비를 관리할 때는 일반적으로 다음의 순서를 따릅니다.\n\n1.  **네트워크 장비 설치**: 네트워크 장비를 서버실에 설치합니다.\n2.  **IP 할당**: 네트워크 장비에 IP 주소를 할당합니다.\n3.  **구성**: 네트워크 장비의 기본 설정을 변경하고, 보안 설정을 하며, 기타 필요한 설정을 합니다.\n4.  **테스트**: 네트워크 장비가 올바르게 작동하는지 테스트합니다.\n\n네트워크 장비를 관리할 때는 위의 순서를 따르면 좋습니다."
+                   },
+                   {
+                       "area":  "7,12",
+                       "name":  "runtime/semantic-kernel endpoint/model config",
+                       "status":  "pass",
+                       "message":  "Endpoint=http://localhost:11434, ModelId=local-assistant"
+                   },
+                   {
+                       "area":  "13,14,15,16",
+                       "name":  "Connector health/model checks",
+                       "status":  "pass",
+                       "message":  "JSON parsing health and model checks are implemented."
+                   },
+                   {
+                       "area":  "7,13,14",
+                       "name":  ".NET build",
+                       "status":  "pass",
+                       "message":  "LocalAI.sln builds successfully."
+                   },
+                   {
+                       "area":  "8",
+                       "name":  "OLLAMA_MODELS",
+                       "status":  "pass",
+                       "message":  "runtime\\ollama\\server\\models -\u003e C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\ollama\\server\\models"
+                   },
+                   {
+                       "area":  "9,19",
+                       "name":  "Network exposure",
+                       "status":  "pass",
+                       "message":  "localhost-only."
+                   },
+                   {
+                       "area":  "10,19",
+                       "name":  "Windows firewall",
+                       "status":  "pass",
+                       "message":  "No inbound firewall rule required for localhost-only binding."
+                   },
+                   {
+                       "area":  "15",
+                       "name":  "Startup task",
+                       "status":  "warn",
+                       "message":  "Scheduled task is not registered. Run register-startup-task.ps1 when ready."
+                   },
+                   {
+                       "area":  "16",
+                       "name":  "OLLAMA_CONTEXT_LENGTH",
+                       "status":  "pass",
+                       "message":  "OLLAMA_CONTEXT_LENGTH=4096"
+                   },
+                   {
+                       "area":  "16",
+                       "name":  "Performance benchmark script",
+                       "status":  "pass",
+                       "message":  "benchmark-server.ps1 exists."
+                   }
+               ]
+}
