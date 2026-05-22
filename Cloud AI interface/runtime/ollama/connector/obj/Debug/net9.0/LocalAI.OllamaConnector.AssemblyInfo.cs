@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("LocalAI.OllamaConnector")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1468f1b94d88d0f4a944741fd635a88b89f51812")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+058935faeedeba83c8a87322d3fb6862adb8824d")]
 [assembly: System.Reflection.AssemblyProductAttribute("LocalAI.OllamaConnector")]
 [assembly: System.Reflection.AssemblyTitleAttribute("LocalAI.OllamaConnector")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
