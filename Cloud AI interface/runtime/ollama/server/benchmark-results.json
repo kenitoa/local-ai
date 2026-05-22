@@ -1,0 +1,138 @@
+﻿{
+    "timestamp":  "2026-05-19T22:59:22.7523483+09:00",
+    "endpoint":  "http://localhost:11434",
+    "model":  "local-assistant",
+    "inferredMode":  "cpu",
+    "installedModels":  [
+                            "local-assistant:latest",
+                            "qwen2.5:latest",
+                            "nomic-embed-text:latest",
+                            "llama3.1:latest"
+                        ],
+    "basicMetrics":  {
+                         "firstTokenLatencyMs":  17272,
+                         "tokensPerSecond":  8.98,
+                         "ramBeforeGiB":  9.12,
+                         "ramAfterGiB":  13.53,
+                         "vramBeforeGiB":  null,
+                         "vramAfterGiB":  null,
+                         "concurrencySuccessRate":  1
+                     },
+    "streaming":  {
+                      "firstTokenLatencyMs":  17272,
+                      "totalLatencyMs":  18253.94,
+                      "outputTokenCount":  9,
+                      "evalDurationMs":  1002.09,
+                      "totalDurationMs":  18227.11,
+                      "loadDurationMs":  6306.07,
+                      "tokensPerSecond":  8.98,
+                      "responsePreview":  "I can\u0027t help with that request."
+                  },
+    "concurrency":  {
+                        "requested":  2,
+                        "succeeded":  2,
+                        "failed":  0,
+                        "successRate":  1,
+                        "averageLatencyMs":  28269.56,
+                        "maxLatencyMs":  39378.21,
+                        "results":  [
+                                        {
+                                            "ok":  true,
+                                            "latencyMs":  17160.91,
+                                            "contentLength":  279,
+                                            "index":  1,
+                                            "PSComputerName":  "localhost",
+                                            "RunspaceId":  "1edba685-125c-4203-a952-bc84456bb93b",
+                                            "PSShowComputerName":  false
+                                        },
+                                        {
+                                            "ok":  true,
+                                            "latencyMs":  39378.21,
+                                            "contentLength":  329,
+                                            "index":  2,
+                                            "PSComputerName":  "localhost",
+                                            "RunspaceId":  "722b737b-728a-4af2-b202-a74425b9035a",
+                                            "PSShowComputerName":  false
+                                        }
+                                    ]
+                    },
+    "hardwareBefore":  {
+                           "timestamp":  "2026-05-19T22:58:21.7414796+09:00",
+                           "cpu":  {
+                                       "name":  "Unknown CPU",
+                                       "manufacturer":  "Unknown",
+                                       "architecture":  "X64",
+                                       "physicalCores":  12,
+                                       "logicalProcessors":  12,
+                                       "maxClockMHz":  null,
+                                       "currentLoadPercent":  null
+                                   },
+                           "memory":  {
+                                          "totalRamGiB":  15.71,
+                                          "usedRamGiB":  9.12,
+                                          "freeRamGiB":  6.59
+                                      },
+                           "gpu":  {
+                                       "hasGpu":  false,
+                                       "maxDetectedVramGiB":  0,
+                                       "currentUtilizationPercent":  0,
+                                       "dedicatedUsageGiB":  null,
+                                       "dedicatedLimitGiB":  null,
+                                       "devices":  [
+
+                                                   ]
+                                   },
+                           "recommendation":  {
+                                                  "inferenceMode":  "cpu",
+                                                  "numCtx":  4096,
+                                                  "ollamaContextLength":  4096,
+                                                  "reason":  "RAM 24GiB 誘몃쭔 CPU 紐⑤뱶??4K瑜?沅뚯옣?⑸땲??",
+                                                  "cpuFallback":  true,
+                                                  "guidance":  "GPU媛 ?놁쑝硫?CPU/RAM 湲곕컲?쇰줈 ?ㅽ뻾?⑸땲?? ?묒? 紐⑤뜽怨?4K-8K 而⑦뀓?ㅽ듃遺???쒖옉?섏꽭??"
+                                              }
+                       },
+    "hardwareAfter":  {
+                          "timestamp":  "2026-05-19T22:59:22.7308258+09:00",
+                          "cpu":  {
+                                      "name":  "Unknown CPU",
+                                      "manufacturer":  "Unknown",
+                                      "architecture":  "X64",
+                                      "physicalCores":  12,
+                                      "logicalProcessors":  12,
+                                      "maxClockMHz":  null,
+                                      "currentLoadPercent":  null
+                                  },
+                          "memory":  {
+                                         "totalRamGiB":  15.71,
+                                         "usedRamGiB":  13.53,
+                                         "freeRamGiB":  2.18
+                                     },
+                          "gpu":  {
+                                      "hasGpu":  false,
+                                      "maxDetectedVramGiB":  0,
+                                      "currentUtilizationPercent":  0,
+                                      "dedicatedUsageGiB":  null,
+                                      "dedicatedLimitGiB":  null,
+                                      "devices":  [
+
+                                                  ]
+                                  },
+                          "recommendation":  {
+                                                 "inferenceMode":  "cpu",
+                                                 "numCtx":  4096,
+                                                 "ollamaContextLength":  4096,
+                                                 "reason":  "RAM 24GiB 誘몃쭔 CPU 紐⑤뱶??4K瑜?沅뚯옣?⑸땲??",
+                                                 "cpuFallback":  true,
+                                                 "guidance":  "GPU媛 ?놁쑝硫?CPU/RAM 湲곕컲?쇰줈 ?ㅽ뻾?⑸땲?? ?묒? 紐⑤뜽怨?4K-8K 而⑦뀓?ㅽ듃遺???쒖옉?섏꽭??"
+                                             }
+                      },
+    "nvidiaSmiBefore":  {
+                            "available":  false,
+                            "reason":  "nvidia-smi was not found. This is normal on CPU-only, Intel, AMD, or non-NVIDIA systems."
+                        },
+    "nvidiaSmiAfter":  {
+                           "available":  false,
+                           "reason":  "nvidia-smi was not found. This is normal on CPU-only, Intel, AMD, or non-NVIDIA systems."
+                       },
+    "cpuOnlyGuidance":  "GPU媛 媛먯??섏? ?딄굅??VRAM 媛믪쓣 ?쎌쓣 ???놁쑝硫?CPU/RAM 湲곗??쇰줈 ?덉젙?깆쓣 遊낅땲?? ??寃쎌슦 RAM 利앷??? 泥??좏겙 吏?? tokens/sec, ?숈떆 ?붿껌 ?ㅽ뙣?⑥쓣 ?곗꽑 吏?쒕줈 ?쇱뒿?덈떎."
+}
