@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CloudAI.Interface")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+058935faeedeba83c8a87322d3fb6862adb8824d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c433b5076f338c3f14121a2444e554c64f36451f")]
 [assembly: System.Reflection.AssemblyProductAttribute("CloudAI.Interface")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CloudAI.Interface")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

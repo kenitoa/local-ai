@@ -17,7 +17,7 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/ready'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 194.4312ms
+      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 229.0597ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
       Request starting HTTP/1.1 GET http://localhost:5096/api/ready - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
@@ -29,7 +29,7 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/ready'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 2.4883ms
+      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 1.7265ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
       Request starting HTTP/1.1 GET http://localhost:5096/api/health - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
@@ -45,7 +45,7 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/health'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/health - 200 - application/json;+charset=utf-8 2041.9355ms
+      Request finished HTTP/1.1 GET http://localhost:5096/api/health - 200 - application/json;+charset=utf-8 2021.0330ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
       Request starting HTTP/1.1 GET http://localhost:5096/api/cloud-ai/interface - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
@@ -57,7 +57,7 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/cloud-ai/interface'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/cloud-ai/interface - 200 - application/json;+charset=utf-8 122.2025ms
+      Request finished HTTP/1.1 GET http://localhost:5096/api/cloud-ai/interface - 200 - application/json;+charset=utf-8 69.3046ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
       Request starting HTTP/1.1 GET http://localhost:5096/api/market/models - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
@@ -69,7 +69,7 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/market/models'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/market/models - 200 - application/json;+charset=utf-8 15.6494ms
+      Request finished HTTP/1.1 GET http://localhost:5096/api/market/models - 200 - application/json;+charset=utf-8 6.9016ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
       Request starting HTTP/1.1 GET http://localhost:5096/api/ready - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
@@ -81,4 +81,4 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/ready'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 0.3189ms
+      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 0.2344ms
