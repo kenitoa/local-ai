@@ -1,0 +1,66 @@
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5088
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\ui\api
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://localhost:5088/api/projects - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/projects'
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
+      Setting HTTP status code 200.
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
+      Writing value of type 'ProjectFoldersResponse' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/projects'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://localhost:5088/api/projects - 200 - application/json;+charset=utf-8 145.4405ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://localhost:5088/api/projects - application/json 54
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/projects'
+info: Microsoft.AspNetCore.Http.Result.CreatedResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.CreatedResult[3]
+      Writing value of type 'ProjectFolderDto' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/projects'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://localhost:5088/api/projects - 201 - application/json;+charset=utf-8 25.1525ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://localhost:5088/api/projects/codex-chat-project-20260520093217/chats - application/json 22
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/projects/{name}/chats'
+info: Microsoft.AspNetCore.Http.Result.CreatedResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.CreatedResult[3]
+      Writing value of type 'ProjectChatDto' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/projects/{name}/chats'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://localhost:5088/api/projects/codex-chat-project-20260520093217/chats - 201 - application/json;+charset=utf-8 11.0374ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://localhost:5088/api/projects - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/projects'
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
+      Setting HTTP status code 200.
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
+      Writing value of type 'ProjectFoldersResponse' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/projects'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://localhost:5088/api/projects - 200 - application/json;+charset=utf-8 17.6464ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 DELETE http://localhost:5088/api/projects/codex-chat-project-20260520093217 - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: DELETE /api/projects/{name}'
+info: Microsoft.AspNetCore.Http.Result.NoContentResult[1]
+      Setting HTTP status code 204.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: DELETE /api/projects/{name}'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 DELETE http://localhost:5088/api/projects/codex-chat-project-20260520093217 - 204 - - 2.9803ms
