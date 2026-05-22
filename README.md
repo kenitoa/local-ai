@@ -20,7 +20,7 @@ publish\start-local-ai.cmd
 2. ASP.NET API 서버를 `http://localhost:5088`에서 실행합니다.
 3. 필수 API가 준비됐는지 확인합니다.
 4. Windows 데스크톱 앱을 실행합니다.
-5. 데스크톱 앱 안에서 `apps/web/index.html` 기반 UI를 그대로 표시합니다.
+5. 데스크톱 앱 안에서 `Cloud AI interface/apps/web/index.html` 기반 UI를 그대로 표시합니다.
 
 브라우저가 아니라 Windows desktop app으로 열리는 것이 기본 동작입니다.
 
@@ -43,6 +43,8 @@ publish\start-local-ai.cmd
 
 ## 전체 구조
 
+루트에는 실행/배포에 필요한 항목만 남기고, 실제 소스와 런타임 구성은 `Cloud AI interface` 폴더 아래에 둡니다. 아래의 `apps/web`, `ui`, `runtime`, `docs`, `scripts` 경로는 모두 `Cloud AI interface/` 기준입니다.
+
 ```text
 사용자
   ↓
@@ -59,7 +61,7 @@ Router / Executor / Aggregator / Judge
 Ollama Expert / .NET Expert / ONNX Expert / External API Expert
 ```
 
-사용자는 데스크톱 앱을 사용하지만, 실제 화면은 웹 UI입니다. WPF 데스크톱 앱은 WebView2를 사용해서 `apps/web/index.html`을 그대로 띄웁니다. 그래서 웹과 데스크톱의 디자인과 기능이 따로 갈라지지 않습니다.
+사용자는 데스크톱 앱을 사용하지만, 실제 화면은 웹 UI입니다. WPF 데스크톱 앱은 WebView2를 사용해서 `Cloud AI interface/apps/web/index.html`을 그대로 띄웁니다. 그래서 웹과 데스크톱의 디자인과 기능이 따로 갈라지지 않습니다.
 
 ## 핵심 원리
 
@@ -452,4 +454,3 @@ Distribution = publish
 - scoring router
 - self-optimization
 - permission system 강화
-

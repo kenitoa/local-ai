@@ -4,25 +4,25 @@
 
 bin/
 obj/
-.build/
+Cloud AI interface/.build/
 node_modules/
 dist/
 publish/app/
 publish/logs/
-data/projects/
+Cloud AI interface/data/projects/
 
-runtime/ollama/server/benchmark-results*.json
-runtime/ollama/server/final-validation-report*.json
-runtime/ollama/server/pull-results.json
-runtime/ollama/server/*.log
-runtime/ollama/server/cli/*
-!runtime/ollama/server/cli/.gitkeep
-runtime/ollama/server/home/*
-!runtime/ollama/server/home/.gitkeep
-runtime/ollama/server/models/*
-!runtime/ollama/server/models/.gitkeep
+Cloud AI interface/runtime/ollama/server/benchmark-results*.json
+Cloud AI interface/runtime/ollama/server/final-validation-report*.json
+Cloud AI interface/runtime/ollama/server/pull-results.json
+Cloud AI interface/runtime/ollama/server/*.log
+Cloud AI interface/runtime/ollama/server/cli/*
+!Cloud AI interface/runtime/ollama/server/cli/.gitkeep
+Cloud AI interface/runtime/ollama/server/home/*
+!Cloud AI interface/runtime/ollama/server/home/.gitkeep
+Cloud AI interface/runtime/ollama/server/models/*
+!Cloud AI interface/runtime/ollama/server/models/.gitkeep
 
 # Local/generated leftovers that should not be uploaded to GitHub.
-Microsoft/
-Interface/
-local LLM model/
+Cloud AI interface/Microsoft/
+Cloud AI interface/Interface/
+Cloud AI interface/local LLM model/

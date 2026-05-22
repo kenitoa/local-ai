@@ -14,14 +14,18 @@ $ErrorActionPreference = "Stop"
 
 $PublishRoot = $PSScriptRoot
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PublishRoot "..")).Path
+$SourceRoot = Join-Path $RepoRoot "Cloud AI interface"
+if (-not (Test-Path -LiteralPath $SourceRoot -PathType Container)) {
+  $SourceRoot = $RepoRoot
+}
 $AppRoot = Join-Path $PublishRoot "app"
 $ApiRoot = Join-Path $AppRoot "api"
 $WpfRoot = Join-Path $AppRoot "wpf"
 $LogRoot = Join-Path $PublishRoot "logs"
-$WebSource = Join-Path $RepoRoot "apps\web"
+$WebSource = Join-Path $SourceRoot "apps\web"
 $WebOut = Join-Path $ApiRoot "wwwroot"
-$OllamaStartScript = Join-Path $RepoRoot "runtime\ollama\server\start-server.ps1"
-$BuildPublishScript = Join-Path $RepoRoot "scripts\build-publish.ps1"
+$OllamaStartScript = Join-Path $SourceRoot "runtime\ollama\server\start-server.ps1"
+$BuildPublishScript = Join-Path $SourceRoot "scripts\build-publish.ps1"
 $ApiReadyUrl = "http://localhost:$ApiPort/api/ready"
 $ApiHealthUrl = "http://localhost:$ApiPort/api/health"
 $ApiCloudInterfaceUrl = "http://localhost:$ApiPort/api/cloud-ai/interface"
@@ -75,7 +79,12 @@ function Get-ListeningProcess {
 
 function Stop-IncompatibleRepoApi {
   $processes = @(Get-Process AspNetAiApi -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -and $_.Path.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase) })
+    Where-Object {
+      $_.Path -and (
+        $_.Path.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $_.Path.StartsWith($SourceRoot, [StringComparison]::OrdinalIgnoreCase)
+      )
+    })
 
   if ($processes.Count -eq 0) {
     $process = Get-ListeningProcess
@@ -84,7 +93,9 @@ function Stop-IncompatibleRepoApi {
     }
 
     $processPath = $process.Path
-    if (-not $processPath -or -not $processPath.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not $processPath -or (
+        -not $processPath.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        -not $processPath.StartsWith($SourceRoot, [StringComparison]::OrdinalIgnoreCase))) {
       throw "Port $ApiPort is already used by a non-local-ai process: $($process.ProcessName) ($($process.Id))"
     }
 
@@ -248,10 +259,10 @@ function Start-Api {
   $apiCandidates = @(
     (Join-Path $ApiRoot "AspNetAiApi.exe"),
     (Join-Path $ApiRoot "AspNetAiApi.dll"),
-    (Join-Path $RepoRoot "ui\api\bin\Release\net9.0\AspNetAiApi.exe"),
-    (Join-Path $RepoRoot "ui\api\bin\Release\net9.0\AspNetAiApi.dll"),
-    (Join-Path $RepoRoot "ui\api\bin\Debug\net9.0\AspNetAiApi.exe"),
-    (Join-Path $RepoRoot "ui\api\bin\Debug\net9.0\AspNetAiApi.dll")
+    (Join-Path $SourceRoot "ui\api\bin\Release\net9.0\AspNetAiApi.exe"),
+    (Join-Path $SourceRoot "ui\api\bin\Release\net9.0\AspNetAiApi.dll"),
+    (Join-Path $SourceRoot "ui\api\bin\Debug\net9.0\AspNetAiApi.exe"),
+    (Join-Path $SourceRoot "ui\api\bin\Debug\net9.0\AspNetAiApi.dll")
   )
   $apiPath = $apiCandidates |
     Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
@@ -323,8 +334,8 @@ function Start-Api {
 function Start-Wpf {
   $candidatePaths = @(
     (Join-Path $WpfRoot "WpfDesktopMvp.exe"),
-    (Join-Path $RepoRoot "ui\wpf\bin\Release\net9.0-windows\WpfDesktopMvp.exe"),
-    (Join-Path $RepoRoot "ui\wpf\bin\Debug\net9.0-windows\WpfDesktopMvp.exe")
+    (Join-Path $SourceRoot "ui\wpf\bin\Release\net9.0-windows\WpfDesktopMvp.exe"),
+    (Join-Path $SourceRoot "ui\wpf\bin\Debug\net9.0-windows\WpfDesktopMvp.exe")
   )
 
   $wpfExe = $candidatePaths |
@@ -353,7 +364,7 @@ function Start-Web {
   Start-Process -FilePath $WebUrl | Out-Null
 }
 
-Push-Location $RepoRoot
+Push-Location $SourceRoot
 try {
   Ensure-PublishedApps
   Start-Ollama
