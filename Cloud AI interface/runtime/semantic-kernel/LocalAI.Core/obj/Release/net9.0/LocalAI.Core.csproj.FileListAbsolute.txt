@@ -1,0 +1,40 @@
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\coding-assistant.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\default-assistant.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\nas-assistant.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\rag-answer.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.Core.deps.json
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.Core.pdb
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.OllamaConnector.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.OllamaConnector.pdb
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.csproj.AssemblyReference.cache
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.AssemblyInfoInputs.cache
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.AssemblyInfo.cs
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.csproj.CoreCompileInputs.cache
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.sourcelink.json
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI..D2DC60A9.Up2Date
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\refint\LocalAI.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.pdb
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\ref\LocalAI.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\refint\LocalAI.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.pdb
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\coding-assistant.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\default-assistant.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\nas-assistant.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\Prompts\rag-answer.txt
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.Core.deps.json
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.Core.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.Core.pdb
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.OllamaConnector.dll
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\bin\Release\net9.0\LocalAI.OllamaConnector.pdb
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.csproj.AssemblyReference.cache
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.AssemblyInfoInputs.cache
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.AssemblyInfo.cs
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.csproj.CoreCompileInputs.cache
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI.Core.sourcelink.json
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\LocalAI..D2DC60A9.Up2Date
+C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\Cloud AI interface\runtime\semantic-kernel\LocalAI.Core\obj\Release\net9.0\ref\LocalAI.Core.dll

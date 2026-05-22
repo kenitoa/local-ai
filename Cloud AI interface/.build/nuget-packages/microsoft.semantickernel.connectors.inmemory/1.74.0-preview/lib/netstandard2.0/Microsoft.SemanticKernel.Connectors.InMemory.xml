@@ -1,0 +1,1046 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Microsoft.SemanticKernel.Connectors.InMemory</name>
+    </assembly>
+    <members>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2">
+            <summary>
+            Service for storing and retrieving vector records, that uses an in memory dictionary as the underlying storage.
+            </summary>
+            <typeparam name="TKey">The data type of the record key.</typeparam>
+            <typeparam name="TRecord">The data model to use for adding, updating and retrieving data from storage.</typeparam>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2._collectionMetadata">
+            <summary>Metadata about vector store record collection.</summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.s_defaultVectorSearchOptions">
+            <summary>The default options for vector search.</summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2._internalCollections">
+            <summary>Internal storage for all of the record collections.</summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2._internalCollectionTypes">
+            <summary>The data type of each collection, to enforce a single type per collection.</summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2._model">
+            <summary>The model for this collection.</summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.#ctor(System.String,Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionOptions)">
+            <summary>
+            Initializes a new instance of the <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2"/> class.
+            </summary>
+            <param name="name">The name of the collection that this <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2"/> will access.</param>
+            <param name="options">Optional configuration options for this class.</param>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.#ctor(System.Collections.Concurrent.ConcurrentDictionary{System.String,System.Collections.Concurrent.ConcurrentDictionary{System.Object,System.Object}},System.Collections.Concurrent.ConcurrentDictionary{System.String,System.Type},System.String,Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionOptions)">
+            <summary>
+            Initializes a new instance of the <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2"/> class.
+            </summary>
+            <param name="internalCollection">Internal storage for the record collection.</param>
+            <param name="internalCollectionTypes">The data type of each collection, to enforce a single type per collection.</param>
+            <param name="name">The name of the collection that this <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2"/> will access.</param>
+            <param name="options">Optional configuration options for this class.</param>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.Name">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.CollectionExistsAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.EnsureCollectionExistsAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.EnsureCollectionDeletedAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.GetAsync(`0,Microsoft.Extensions.VectorData.RecordRetrievalOptions,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.DeleteAsync(`0,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.UpsertAsync(`1,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.UpsertAsync(System.Collections.Generic.IEnumerable{`1},System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.SearchAsync``1(``0,System.Int32,Microsoft.Extensions.VectorData.VectorSearchOptions{`1},System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.GetService(System.Type,System.Object)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.GetAsync(System.Linq.Expressions.Expression{System.Func{`1,System.Boolean}},System.Int32,Microsoft.Extensions.VectorData.FilteredRecordRetrievalOptions{`1},System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.GetCollectionDictionary">
+            <summary>
+            Get the collection dictionary from the internal storage, throws if it does not exist.
+            </summary>
+            <returns>The retrieved collection dictionary.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.UpdateCollectionDictionary(System.Collections.Generic.Dictionary{System.Object,System.Object})">
+            <summary>
+            Updates the collection dictionary with any matches values from the provided dictionary.
+            </summary>
+            <param name="updates">Updates to apply to the collection dictionary.</param>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2.ConvertFilter(System.Linq.Expressions.Expression{System.Func{`1,System.Boolean}})">
+            <summary>
+            The user provides a filter expression accepting a Record, but we internally store it wrapped in an InMemoryVectorRecordWrapper.
+            This method converts a filter expression accepting a Record to one accepting an InMemoryVectorRecordWrapper.
+            </summary>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionOptions">
+            <summary>
+            Options when creating a <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2"/>.
+            </summary>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping">
+            <summary>
+            Contains mapping helpers to use when searching for documents using the InMemory store.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping.CompareVectors(System.ReadOnlySpan{System.Single},System.ReadOnlySpan{System.Single},System.String)">
+            <summary>
+            Compare the two vectors using the specified distance function.
+            </summary>
+            <param name="x">The first vector to compare.</param>
+            <param name="y">The second vector to compare.</param>
+            <param name="distanceFunction">The distance function to use for comparison.</param>
+            <returns>The score of the comparison.</returns>
+            <exception cref="T:System.NotSupportedException">Thrown when the distance function is not supported.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping.ShouldSortDescending(System.String)">
+            <summary>
+            Indicates whether result ordering should be descending or ascending, to get most similar results at the top, based on the distance function.
+            </summary>
+            <param name="distanceFunction">The distance function to use for comparison.</param>
+            <returns>Whether to order descending or ascending.</returns>
+            <exception cref="T:System.NotSupportedException">Thrown when the distance function is not supported.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping.ConvertScore(System.Single,System.String)">
+            <summary>
+            Converts the provided score into the correct result depending on the distance function.
+            The main purpose here is to convert from cosine similarity to cosine distance if cosine distance is requested,
+            since the two are inversely related and the <see cref="T:System.Numerics.Tensors.TensorPrimitives"/> only supports cosine similarity so
+            we are using cosine similarity for both similarity and distance.
+            </summary>
+            <param name="score">The score to convert.</param>
+            <param name="distanceFunction">The distance function to use for comparison.</param>
+            <returns>Whether to order descending or ascending.</returns>
+            <exception cref="T:System.NotSupportedException">Thrown when the distance function is not supported.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping.FilterRecords``1(Microsoft.Extensions.VectorData.VectorSearchFilter,System.Collections.Generic.IEnumerable{Microsoft.SemanticKernel.Connectors.InMemory.InMemoryRecordWrapper{``0}})">
+            <summary>
+            Filter the provided records using the provided filter definition.
+            </summary>
+            <param name="filter">The filter definition to filter the <paramref name="recordWrappers"/> with.</param>
+            <param name="recordWrappers">The records to filter.</param>
+            <returns>The filtered records.</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when an unsupported filter clause is encountered.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping.CheckEqualTo(System.Object,Microsoft.Extensions.VectorData.EqualToFilterClause)">
+            <summary>
+            Check if the required property on the record is equal to the required value form the filter.
+            </summary>
+            <param name="record">The record to check against the filter.</param>
+            <param name="equalToFilter">The filter containing the property and value to check.</param>
+            <returns><see langword="true"/> if the property equals the required value, <see langword="false"/> otherwise.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping.CheckAnyTagEqualTo(System.Object,Microsoft.Extensions.VectorData.AnyTagEqualToFilterClause)">
+            <summary>
+            Check if the required tag list on the record is equal to the required value form the filter.
+            </summary>
+            <param name="record">The record to check against the filter.</param>
+            <param name="anyTagEqualToFilter">The filter containing the property and value to check.</param>
+            <returns><see langword="true"/> if the tag list contains the required value, <see langword="false"/> otherwise.</returns>
+            <exception cref="T:System.InvalidOperationException"></exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionSearchMapping.GetPropertyInfo(System.Object,System.String)">
+            <summary>
+            Get the property info for the provided property name on the record.
+            </summary>
+            <param name="record">The record to find the property on.</param>
+            <param name="propertyName">The name of the property to find.</param>
+            <returns>The property info for the required property.</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown if the required property does not exist on the record.</exception>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryDynamicCollection">
+            <summary>
+            Represents a collection of vector store records in a InMemory database, mapped to a dynamic <c>Dictionary&lt;string, object?&gt;</c>.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryDynamicCollection.#ctor(System.String,Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionOptions)">
+            <summary>
+            Initializes a new instance of the <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryDynamicCollection"/> class.
+            </summary>
+            <param name="name">The name of the collection.</param>
+            <param name="options">Optional configuration options for this class.</param>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore">
+            <summary>
+            Service for storing and retrieving vector records, and managing vector record collections, that uses an in memory dictionary as the underlying storage.
+            </summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore._metadata">
+            <summary>Metadata about vector store.</summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore._internalCollections">
+            <summary>Internal storage for the record collection.</summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore._internalCollectionTypes">
+            <summary>The data type of each collection, to enforce a single type per collection.</summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore.#ctor(Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreOptions)">
+            <summary>
+            Initializes a new instance of the <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore"/> class.
+            </summary>
+            <param name="options">Optional configuration options for this class</param>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore.GetCollection``2(System.String,Microsoft.Extensions.VectorData.VectorStoreCollectionDefinition)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore.GetDynamicCollection(System.String,Microsoft.Extensions.VectorData.VectorStoreCollectionDefinition)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore.ListCollectionNamesAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore.CollectionExistsAsync(System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore.EnsureCollectionDeletedAsync(System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore.GetService(System.Type,System.Object)">
+            <inheritdoc />
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreExtensions">
+            <summary>
+            Extension methods for <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore"/> which allow:
+            1. Serializing an instance of <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2"/> to a stream.
+            2. Deserializing an instance of <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2"/> from a stream.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreExtensions.SerializeCollectionAsJsonAsync``2(Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore,System.String,System.IO.Stream,System.Text.Json.JsonSerializerOptions)">
+            <summary>
+            Serialize a <see cref="T:Microsoft.Extensions.VectorData.VectorStoreCollection`2"/> to a stream as JSON.
+            </summary>
+            <typeparam name="TKey">Type of the record key.</typeparam>
+            <typeparam name="TRecord">Type of the record.</typeparam>
+            <param name="vectorStore">Instance of <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore"/> used to retrieve the collection.</param>
+            <param name="collectionName">The collection name.</param>
+            <param name="stream">The stream to write the serialized JSON to.</param>
+            <param name="jsonSerializerOptions">The JSON serializer options to use.</param>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreExtensions.DeserializeCollectionFromJsonAsync``2(Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore,System.IO.Stream)">
+            <summary>
+            Deserialize a <see cref="T:Microsoft.Extensions.VectorData.VectorStoreCollection`2"/> to a stream as JSON.
+            </summary>
+            <typeparam name="TKey">Type of the record key.</typeparam>
+            <typeparam name="TRecord">Type of the record.</typeparam>
+            <param name="vectorStore">Instance of <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore"/> used to retrieve the collection.</param>
+            <param name="stream">The stream to read the serialized JSON from.</param>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreExtensions.InMemoryRecordCollection`2">
+            <summary>Model class used when storing a <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2" />.</summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreExtensions.InMemoryRecordCollection`2.#ctor(System.String,System.Collections.Generic.IDictionary{`0,`1})">
+            <summary>Model class used when storing a <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollection`2" />.</summary>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreOptions">
+            <summary>
+            Options when creating a <see cref="T:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStore"/>.
+            </summary>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreOptions.EmbeddingGenerator">
+            <summary>
+            Gets or sets the default embedding generator to use when generating vectors embeddings with this vector store.
+            </summary>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.InMemoryServiceCollectionExtensions">
+            <summary>
+            Extension methods to register Data services on an <see cref="T:Microsoft.Extensions.DependencyInjection.IServiceCollection"/>.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.InMemoryServiceCollectionExtensions.AddInMemoryVectorStore(Microsoft.Extensions.DependencyInjection.IServiceCollection,Microsoft.SemanticKernel.Connectors.InMemory.InMemoryVectorStoreOptions,System.String)">
+            <summary>
+            Register an InMemory <see cref="T:Microsoft.Extensions.VectorData.VectorStore"/> with the specified service ID.
+            </summary>
+            <param name="services">The <see cref="T:Microsoft.Extensions.DependencyInjection.IServiceCollection"/> to register the <see cref="T:Microsoft.Extensions.VectorData.VectorStore"/> on.</param>
+            <param name="options">Optional options to further configure the <see cref="T:Microsoft.Extensions.VectorData.VectorStore"/>.</param>
+            <param name="serviceId">An optional service id to use as the service key.</param>
+            <returns>The service collection.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.InMemoryServiceCollectionExtensions.AddInMemoryVectorStoreRecordCollection``2(Microsoft.Extensions.DependencyInjection.IServiceCollection,System.String,Microsoft.SemanticKernel.Connectors.InMemory.InMemoryCollectionOptions,System.String)">
+            <summary>
+            Register an InMemory <see cref="T:Microsoft.Extensions.VectorData.VectorStoreCollection`2"/> and <see cref="T:Microsoft.Extensions.VectorData.IVectorSearchable`1"/> with the specified service ID.
+            </summary>
+            <typeparam name="TKey">The type of the key.</typeparam>
+            <typeparam name="TRecord">The type of the record.</typeparam>
+            <param name="services">The <see cref="T:Microsoft.Extensions.DependencyInjection.IServiceCollection"/> to register the <see cref="T:Microsoft.Extensions.VectorData.VectorStoreCollection`2"/> on.</param>
+            <param name="collectionName">The name of the collection.</param>
+            <param name="options">Optional options to further configure the <see cref="T:Microsoft.Extensions.VectorData.VectorStoreCollection`2"/>.</param>
+            <param name="serviceId">An optional service id to use as the service key.</param>
+            <returns>The service collection.</returns>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.AppContextSwitchHelper">
+            <summary>
+            Helper class to get app context switch value
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.AppContextSwitchHelper.GetConfigValue(System.String,System.String)">
+            <summary>
+            Returns the value of the specified app switch or environment variable if it is set.
+            If the switch or environment variable is not set, return false.
+            The app switch value takes precedence over the environment variable.
+            </summary>
+            <param name="appContextSwitchName">The name of the app switch.</param>
+            <param name="envVarName">The name of the environment variable.</param>
+            <returns>The value of the app switch or environment variable if it is set; otherwise, false.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.IListExtensions.AddRange``1(System.Collections.Generic.IList{``0},System.Collections.Generic.IEnumerable{``0})">
+            <summary>
+            Adds a range of elements from the specified <see cref="T:System.Collections.Generic.IEnumerable`1"/> source to the target <see cref="T:System.Collections.Generic.IList`1"/>.
+            </summary>
+            <typeparam name="T">The type of elements in the list.</typeparam>
+            <param name="target">The target <see cref="T:System.Collections.Generic.IList`1"/> to add elements to.</param>
+            <param name="source">The source <see cref="T:System.Collections.Generic.IEnumerable`1"/> containing elements to add to the target <see cref="T:System.Collections.Generic.IList`1"/>.</param>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.InternalTypeConverter">
+            <summary>
+            Provides internal utility methods for converting types to strings with consideration for CultureInfo.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.InternalTypeConverter.ConvertToString(System.Object,System.Globalization.CultureInfo)">
+            <summary>
+            Converts the given object value to a string representation using the appropriate CultureInfo.
+            </summary>
+            <param name="value">The object to convert.</param>
+            <param name="culture">The CultureInfo to consider during conversion.</param>
+            <returns>A string representation of the object value, considering the specified CultureInfo.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.InternalTypeConverter.GetTypeToStringConverterDelegate(System.Type)">
+            <summary>
+            Retrieves a type-to-string converter delegate for the specified source type.
+            </summary>
+            <param name="sourceType">The source Type for which to retrieve the type-to-string converter delegate.</param>
+            <returns>A Func delegate for converting the source type to a string, considering CultureInfo, or null if no suitable converter is found.</returns>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.InternalTypeConverter.s_converters">
+            <summary>Converter functions for converting types to strings.</summary>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.NonNullCollection`1">
+            <summary>
+            Provides a collection of non-null items.
+            </summary>
+        </member>
+        <member name="F:Microsoft.SemanticKernel.NonNullCollection`1._items">
+            <summary>
+            The underlying list of items.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.#ctor">
+            <summary>
+            Initializes a new instance of the <see cref="T:Microsoft.SemanticKernel.NonNullCollection`1"/> class.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.#ctor(System.Collections.Generic.IEnumerable{`0})">
+            <summary>
+            Initializes a new instance of the <see cref="T:Microsoft.SemanticKernel.NonNullCollection`1"/> class.
+            </summary>
+            <param name="items">The initial collection of items to populate this collection.</param>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.NonNullCollection`1.Item(System.Int32)">
+            <summary>
+            Gets or sets the item at the specified index in the collection.
+            </summary>
+            <param name="index">The index of the item to get or set.</param>
+            <returns>The item at the specified index.</returns>
+            <exception cref="T:System.ArgumentNullException"><paramref name="value"/> is null.</exception>
+            <exception cref="T:System.ArgumentOutOfRangeException">The <paramref name="index"/> was not valid for this collection.</exception>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.NonNullCollection`1.Count">
+            <summary>
+            Gets the number of items in the collection.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.Add(`0)">
+            <summary>
+            Adds an item to the collection.
+            </summary>
+            <param name="item">The item to add.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="item"/> is null.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.Clear">
+            <summary>
+            Removes all items from the collection.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.Contains(`0)">
+            <summary>
+            Determines whether an item is in the collection.
+            </summary>
+            <param name="item">The item to locate.</param>
+            <returns>True if the item is found in the collection; otherwise, false.</returns>
+            <exception cref="T:System.ArgumentNullException"><paramref name="item"/> is null.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.CopyTo(`0[],System.Int32)">
+            <summary>
+            Copies all of the items in the collection to an array, starting at the specified destination array index.
+            </summary>
+            <param name="array">The destination array into which the items should be copied.</param>
+            <param name="arrayIndex">The zero-based index into <paramref name="array"/> at which copying should begin.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="array"/> is null.</exception>
+            <exception cref="T:System.ArgumentException">The number of items in the collection is greater than the available space from <paramref name="arrayIndex"/> to the end of <paramref name="array"/>.</exception>
+            <exception cref="T:System.ArgumentOutOfRangeException"><paramref name="arrayIndex"/> is less than 0.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.IndexOf(`0)">
+            <summary>
+            Searches for the specified item and returns the index of the first occurrence.
+            </summary>
+            <param name="item">The item to locate.</param>
+            <returns>The index of the first found occurrence of the specified item; -1 if the item could not be found.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.Insert(System.Int32,`0)">
+            <summary>
+            Inserts an item into the collection at the specified index.
+            </summary>
+            <param name="index">The index at which the item should be inserted.</param>
+            <param name="item">The item to insert.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="item"/> is null.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.Remove(`0)">
+            <summary>
+            Removes the first occurrence of the specified item from the collection.
+            </summary>
+            <param name="item">The item to remove from the collection.</param>
+            <returns>True if the item was successfully removed; false if it wasn't located in the collection.</returns>
+            <exception cref="T:System.ArgumentNullException"><paramref name="item"/> is null.</exception>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.NonNullCollection`1.RemoveAt(System.Int32)">
+            <summary>
+            Removes the item at the specified index from the collection.
+            </summary>
+            <param name="index">The index of the item to remove.</param>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.TypeConverterFactory">
+            <summary>
+            Factory for creating TypeConverter instances based on a provided type.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.TypeConverterFactory.GetTypeConverter(System.Type)">
+            <summary>
+            Returns a TypeConverter instance for the specified type.
+            </summary>
+            <param name="type">The Type of the object to convert.</param>
+            <returns>A TypeConverter instance if a suitable converter is found, otherwise null.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Verify.NotNull(System.Object,System.String)">
+            <summary>
+            Equivalent of ArgumentNullException.ThrowIfNull
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Verify.ValidHostnameSegment(System.String,System.String)">
+            <summary>
+            Validates that a hostname segment string is safe for use as a URL segment, preventing URL injection.
+            </summary>
+            <param name="hostNameSegment">The hostname segment string to validate (e.g., 'us-east1', 'europe-west4')</param>
+            <param name="paramName">Optional parameter name for the exception</param>
+            <exception cref="T:System.ArgumentException">Thrown when the location contains invalid characters or patterns</exception>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Http.HttpClientProvider">
+            <summary>
+            Provides functionality for retrieving instances of HttpClient.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Http.HttpClientProvider.GetHttpClient">
+            <summary>
+            Retrieves an instance of HttpClient.
+            </summary>
+            <returns>An instance of HttpClient.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Http.HttpClientProvider.GetHttpClient(System.Net.Http.HttpClient)">
+            <summary>
+            Retrieves an instance of HttpClient.
+            </summary>
+            <returns>An instance of HttpClient.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Http.HttpClientProvider.GetHttpClient(System.IServiceProvider)">
+            <summary>
+            Retrieves an instance of HttpClient.
+            </summary>
+            <returns>An instance of HttpClient.</returns>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Http.HttpClientProvider.GetHttpClient(System.Net.Http.HttpClient,System.IServiceProvider)">
+            <summary>
+            Retrieves an instance of HttpClient.
+            </summary>
+            <returns>An instance of HttpClient.</returns>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Http.HttpClientProvider.NonDisposableHttpClientHandler">
+            <summary>
+            Represents a singleton implementation of <see cref="T:System.Net.Http.HttpClientHandler"/> that is not disposable.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Http.HttpClientProvider.NonDisposableHttpClientHandler.#ctor">
+            <summary>
+            Private constructor to prevent direct instantiation of the class.
+            </summary>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.Http.HttpClientProvider.NonDisposableHttpClientHandler.Instance">
+            <summary>
+            Gets the singleton instance of <see cref="T:Microsoft.SemanticKernel.Http.HttpClientProvider.NonDisposableHttpClientHandler"/>.
+            </summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Http.HttpClientProvider.NonDisposableHttpClientHandler.Dispose(System.Boolean)">
+            <summary>
+            Disposes the underlying resources held by the <see cref="T:Microsoft.SemanticKernel.Http.HttpClientProvider.NonDisposableHttpClientHandler"/>.
+            This implementation does nothing to prevent unintended disposal, as it may affect all references.
+            </summary>
+            <param name="disposing">True if called from <see cref="M:Microsoft.SemanticKernel.Http.HttpClientProvider.NonDisposableHttpClientHandler.Dispose(System.Boolean)"/>, false if called from a finalizer.</param>
+        </member>
+        <member name="T:Microsoft.SemanticKernel.Http.HttpHeaderConstant">
+            <summary>Provides HTTP header names and values for common purposes.</summary>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.Http.HttpHeaderConstant.Names.SemanticKernelVersion">
+            <summary>HTTP header name to use to include the Semantic Kernel package version in all HTTP requests issued by Semantic Kernel.</summary>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.Http.HttpHeaderConstant.Names.UserAgent">
+            <summary>HTTP User-Agent header name.</summary>
+        </member>
+        <member name="P:Microsoft.SemanticKernel.Http.HttpHeaderConstant.Values.UserAgent">
+            <summary>User agent string to use for all HTTP requests issued by Semantic Kernel.</summary>
+        </member>
+        <member name="M:Microsoft.SemanticKernel.Http.HttpHeaderConstant.Values.GetAssemblyVersion(System.Type)">
+            <summary>
+            Gets the version of the <see cref="T:System.Reflection.Assembly"/> in which the specific type is declared.
+            </summary>
+            <param name="type">Type for which the assembly version is returned.</param>
+        </member>
+        <member name="T:Microsoft.Extensions.DependencyInjection.EmptyKeyedServiceProvider">
+            <summary>Provides an implementation of <see cref="T:Microsoft.Extensions.DependencyInjection.IKeyedServiceProvider"/> that contains no services.</summary>
+        </member>
+        <member name="P:Microsoft.Extensions.DependencyInjection.EmptyKeyedServiceProvider.Instance">
+            <summary>Gets a singleton instance of <see cref="T:Microsoft.Extensions.DependencyInjection.EmptyKeyedServiceProvider"/>.</summary>
+        </member>
+        <member name="M:Microsoft.Extensions.DependencyInjection.EmptyKeyedServiceProvider.GetService(System.Type)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.Extensions.DependencyInjection.EmptyKeyedServiceProvider.GetKeyedService(System.Type,System.Object)">
+            <inheritdoc />
+        </member>
+        <member name="M:Microsoft.Extensions.DependencyInjection.EmptyKeyedServiceProvider.GetRequiredKeyedService(System.Type,System.Object)">
+            <inheritdoc />
+        </member>
+        <member name="T:Microsoft.Extensions.VectorData.VectorStoreErrorHandler">
+            <summary>
+            Contains helpers for reading vector store model properties and their attributes.
+            </summary>
+        </member>
+        <member name="M:System.EnvExtensions.GetBoolEnvVar(System.String)">
+            <summary>
+            Source: https://github.com/Azure/azure-sdk-for-net/blob/main/sdk/core/Azure.Core/src/DiagnosticsOptions.cs
+            Values: https://learn.microsoft.com/en-us/dotnet/api/azure.core.diagnosticsoptions.istelemetryenabled?view=azure-dotnet
+            </summary>
+        </member>
+        <member name="T:System.Runtime.CompilerServices.RequiredMemberAttribute">
+            <summary>Specifies that a type has required members or that a member is required.</summary>
+        </member>
+        <member name="P:System.Runtime.CompilerServices.CompilerFeatureRequiredAttribute.FeatureName">
+            <summary>
+            The name of the compiler feature.
+            </summary>
+        </member>
+        <member name="P:System.Runtime.CompilerServices.CompilerFeatureRequiredAttribute.IsOptional">
+            <summary>
+            If true, the compiler can choose to allow access to the location where this attribute is applied if it does not understand <see cref="P:System.Runtime.CompilerServices.CompilerFeatureRequiredAttribute.FeatureName"/>.
+            </summary>
+        </member>
+        <member name="F:System.Runtime.CompilerServices.CompilerFeatureRequiredAttribute.RefStructs">
+            <summary>
+            The <see cref="P:System.Runtime.CompilerServices.CompilerFeatureRequiredAttribute.FeatureName"/> used for the ref structs C# feature.
+            </summary>
+        </member>
+        <member name="F:System.Runtime.CompilerServices.CompilerFeatureRequiredAttribute.RequiredMembers">
+            <summary>
+            The <see cref="P:System.Runtime.CompilerServices.CompilerFeatureRequiredAttribute.FeatureName"/> used for the required members C# feature.
+            </summary>
+        </member>
+        <member name="T:System.Runtime.CompilerServices.IsExternalInit">
+            <summary>
+            Reserved to be used by the compiler for tracking metadata.
+            This class should not be used by developers in source code.
+            </summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute">
+             <summary>
+             Polyfill for the DynamicallyAccessedMembersAttribute not available in .NET Standard 2.0.
+             Indicates that certain members on a specified <see cref="T:System.Type"/> are accessed dynamically,
+             for example through <see cref="N:System.Reflection"/>.
+             </summary>
+             <remarks>
+             This allows tools to understand which members are being accessed during the execution
+             of a program.
+            
+             This attribute is valid on members whose type is <see cref="T:System.Type"/> or <see cref="T:System.String"/>.
+            
+             When this attribute is applied to a location of type <see cref="T:System.String"/>, the assumption is
+             that the string represents a fully qualified type name.
+            
+             When this attribute is applied to a class, interface, or struct, the members specified
+             can be accessed dynamically on <see cref="T:System.Type"/> instances returned from calling
+             <see cref="M:System.Object.GetType"/> on instances of that class, interface, or struct.
+            
+             If the attribute is applied to a method it's treated as a special case and it implies
+             the attribute should be applied to the "this" parameter of the method. As such the attribute
+             should only be used on instance methods of types assignable to System.Type (or string, but no methods
+             will use it there).
+             </remarks>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute.#ctor(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes)">
+            <summary>
+            Initializes a new instance of the <see cref="T:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute"/> class
+            with the specified member types.
+            </summary>
+            <param name="memberTypes">The types of members dynamically accessed.</param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute.MemberTypes">
+            <summary>
+            Gets the <see cref="T:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes"/> which specifies the type
+            of members dynamically accessed.
+            </summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes">
+             <summary>
+             Specifies the types of members that are dynamically accessed.
+            
+             This enumeration has a <see cref="T:System.FlagsAttribute"/> attribute that allows a
+             bitwise combination of its member values.
+             </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.None">
+            <summary>
+            Specifies no members.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor">
+            <summary>
+            Specifies the default, parameterless public constructor.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors">
+            <summary>
+            Specifies all public constructors.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.NonPublicConstructors">
+            <summary>
+            Specifies all non-public constructors.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods">
+            <summary>
+            Specifies all public methods.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.NonPublicMethods">
+            <summary>
+            Specifies all non-public methods.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields">
+            <summary>
+            Specifies all public fields.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.NonPublicFields">
+            <summary>
+            Specifies all non-public fields.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicNestedTypes">
+            <summary>
+            Specifies all public nested types.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.NonPublicNestedTypes">
+            <summary>
+            Specifies all non-public nested types.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties">
+            <summary>
+            Specifies all public properties.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.NonPublicProperties">
+            <summary>
+            Specifies all non-public properties.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicEvents">
+            <summary>
+            Specifies all public events.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.NonPublicEvents">
+            <summary>
+            Specifies all non-public events.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.Interfaces">
+            <summary>
+            Specifies all interfaces implemented by the type.
+            </summary>
+        </member>
+        <member name="F:System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All">
+            <summary>
+            Specifies all members.
+            </summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.ExperimentalAttribute">
+            <summary>
+             Indicates that an API is experimental and it may change in the future.
+            </summary>
+            <remarks>
+              This attribute allows call sites to be flagged with a diagnostic that indicates that an experimental
+              feature is used. Authors can use this attribute to ship preview features in their assemblies.
+            </remarks>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.ExperimentalAttribute.#ctor(System.String)">
+            <summary>
+             Initializes a new instance of the <see cref="T:System.Diagnostics.CodeAnalysis.ExperimentalAttribute"/> class, specifying the ID that the compiler will use
+             when reporting a use of the API the attribute applies to.
+            </summary>
+            <param name="diagnosticId">The ID that the compiler will use when reporting a use of the API the attribute applies to.</param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.ExperimentalAttribute.DiagnosticId">
+            <summary>
+             Gets the ID that the compiler will use when reporting a use of the API the attribute applies to.
+            </summary>
+            <value>The unique diagnostic ID.</value>
+            <remarks>
+             The diagnostic ID is shown in build output for warnings and errors.
+             <para>This property represents the unique ID that can be used to suppress the warnings or errors, if needed.</para>
+            </remarks>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.ExperimentalAttribute.UrlFormat">
+            <summary>
+             Gets or sets the URL for corresponding documentation.
+             The API accepts a format string instead of an actual URL, creating a generic URL that includes the diagnostic ID.
+            </summary>
+            <value>The format string that represents a URL to corresponding documentation.</value>
+            <remarks>An example format string is <c>https://contoso.com/obsoletion-warnings/{0}</c>.</remarks>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.AllowNullAttribute">
+            <summary>Specifies that null is allowed as an input even if the corresponding type disallows it.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.DisallowNullAttribute">
+            <summary>Specifies that null is disallowed as an input even if the corresponding type allows it.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.MaybeNullAttribute">
+            <summary>Specifies that an output may be null even if the corresponding type disallows it.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.NotNullAttribute">
+            <summary>Specifies that an output will not be null even if the corresponding type allows it.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute">
+            <summary>Specifies that when a method returns <see cref="P:System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute.ReturnValue"/>, the parameter may be null even if the corresponding type disallows it.</summary>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute.#ctor(System.Boolean)">
+            <summary>Initializes the attribute with the specified return value condition.</summary>
+            <param name="returnValue">
+            The return value condition. If the method returns this value, the associated parameter may be null.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute.ReturnValue">
+            <summary>Gets the return value condition.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.NotNullWhenAttribute">
+            <summary>Specifies that when a method returns <see cref="P:System.Diagnostics.CodeAnalysis.NotNullWhenAttribute.ReturnValue"/>, the parameter will not be null even if the corresponding type allows it.</summary>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.NotNullWhenAttribute.#ctor(System.Boolean)">
+            <summary>Initializes the attribute with the specified return value condition.</summary>
+            <param name="returnValue">
+            The return value condition. If the method returns this value, the associated parameter will not be null.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.NotNullWhenAttribute.ReturnValue">
+            <summary>Gets the return value condition.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute">
+            <summary>Specifies that the output will be non-null if the named parameter is non-null.</summary>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute.#ctor(System.String)">
+            <summary>Initializes the attribute with the associated parameter name.</summary>
+            <param name="parameterName">
+            The associated parameter name.  The output will be non-null if the argument to the parameter specified is non-null.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute.ParameterName">
+            <summary>Gets the associated parameter name.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.DoesNotReturnAttribute">
+            <summary>Applied to a method that will never return under any circumstance.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.DoesNotReturnIfAttribute">
+            <summary>Specifies that the method will not return if the associated Boolean parameter is passed the specified value.</summary>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.DoesNotReturnIfAttribute.#ctor(System.Boolean)">
+            <summary>Initializes the attribute with the specified parameter value.</summary>
+            <param name="parameterValue">
+            The condition parameter value. Code after the method will be considered unreachable by diagnostics if the argument to
+            the associated parameter matches this value.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.DoesNotReturnIfAttribute.ParameterValue">
+            <summary>Gets the condition parameter value.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.MemberNotNullAttribute">
+            <summary>Specifies that the method or property will ensure that the listed field and property members have not-null values.</summary>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.MemberNotNullAttribute.#ctor(System.String)">
+            <summary>Initializes the attribute with a field or property member.</summary>
+            <param name="member">
+            The field or property member that is promised to be not-null.
+            </param>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.MemberNotNullAttribute.#ctor(System.String[])">
+            <summary>Initializes the attribute with the list of field and property members.</summary>
+            <param name="members">
+            The list of field and property members that are promised to be not-null.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.MemberNotNullAttribute.Members">
+            <summary>Gets field or property member names.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute">
+            <summary>Specifies that the method or property will ensure that the listed field and property members have not-null values when returning with the specified return value condition.</summary>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute.#ctor(System.Boolean,System.String)">
+            <summary>Initializes the attribute with the specified return value condition and a field or property member.</summary>
+            <param name="returnValue">
+            The return value condition. If the method returns this value, the associated parameter will not be null.
+            </param>
+            <param name="member">
+            The field or property member that is promised to be not-null.
+            </param>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute.#ctor(System.Boolean,System.String[])">
+            <summary>Initializes the attribute with the specified return value condition and list of field and property members.</summary>
+            <param name="returnValue">
+            The return value condition. If the method returns this value, the associated parameter will not be null.
+            </param>
+            <param name="members">
+            The list of field and property members that are promised to be not-null.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute.ReturnValue">
+            <summary>Gets the return value condition.</summary>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute.Members">
+            <summary>Gets field or property member names.</summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute">
+            <summary>
+            Polyfill for the RequiresDynamicCodeAttribute not available in .NET Standard 2.0.
+            Indicates that the specified method requires the ability to generate new code at runtime,
+            for example through <see cref="N:System.Reflection"/>.
+            </summary>
+            <remarks>
+            This allows tools to understand which methods are unsafe to call when compiling ahead of time.
+            </remarks>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute"/> class
+            with the specified message.
+            </summary>
+            <param name="message">
+            A message that contains information about the usage of dynamic code.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute.Message">
+            <summary>
+            Gets a message that contains information about the usage of dynamic code.
+            </summary>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute.Url">
+            <summary>
+            Gets or sets an optional URL that contains more information about the method,
+            why it requires dynamic code, and what options a consumer has to deal with it.
+            </summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute">
+            <summary>
+            Polyfill for the RequiresUnreferencedCodeAttribute not available in .NET Standard 2.0.
+            Indicates that the specified method requires dynamic access to code that is not referenced
+            statically, for example through <see cref="N:System.Reflection"/>.
+            </summary>
+            <remarks>
+            This allows tools to understand which methods are unsafe to call when removing unreferenced
+            code from an application.
+            </remarks>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute"/> class
+            with the specified message.
+            </summary>
+            <param name="message">
+            A message that contains information about the usage of unreferenced code.
+            </param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute.Message">
+            <summary>
+            Gets a message that contains information about the usage of unreferenced code.
+            </summary>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute.Url">
+            <summary>
+            Gets or sets an optional URL that contains more information about the method,
+            why it requires unreferenced code, and what options a consumer has to deal with it.
+            </summary>
+        </member>
+        <member name="T:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+            <summary>
+            Polyfill for the UnconditionalSuppressMessageAttribute introduced in .NET 8.0
+            Suppresses reporting of a specific rule violation, allowing multiple suppressions on a
+            single code artifact.
+            </summary>
+            <remarks>
+            <see cref="T:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute"/> is different than
+            <see cref="T:System.Diagnostics.CodeAnalysis.SuppressMessageAttribute"/> in that it doesn't have a
+            <see cref="T:System.Diagnostics.ConditionalAttribute"/>. So it is always preserved in the compiled assembly.
+            </remarks>
+        </member>
+        <member name="M:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.#ctor(System.String,System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute"/>
+            class, specifying the category of the tool and the identifier for an analysis rule.
+            </summary>
+            <param name="category">The category for the attribute.</param>
+            <param name="checkId">The identifier of the analysis rule the attribute applies to.</param>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.Category">
+            <summary>
+            Gets the category identifying the classification of the attribute.
+            </summary>
+            <remarks>
+            The <see cref="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.Category"/> property describes the tool or tool analysis category
+            for which a message suppression attribute applies.
+            </remarks>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.CheckId">
+            <summary>
+            Gets the identifier of the analysis tool rule to be suppressed.
+            </summary>
+            <remarks>
+            Concatenated together, the <see cref="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.Category"/> and <see cref="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.CheckId"/>
+            properties form a unique check identifier.
+            </remarks>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.Scope">
+            <summary>
+            Gets or sets the scope of the code that is relevant for the attribute.
+            </summary>
+            <remarks>
+            The Scope property is an optional argument that specifies the metadata scope for which
+            the attribute is relevant.
+            </remarks>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.Target">
+            <summary>
+            Gets or sets a fully qualified path that represents the target of the attribute.
+            </summary>
+            <remarks>
+            The <see cref="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.Target"/> property is an optional argument identifying the analysis target
+            of the attribute. An example value is "System.IO.Stream.ctor():System.Void".
+            Because it is fully qualified, it can be long, particularly for targets such as parameters.
+            The analysis tool user interface should be capable of automatically formatting the parameter.
+            </remarks>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.MessageId">
+            <summary>
+            Gets or sets an optional argument expanding on exclusion criteria.
+            </summary>
+            <remarks>
+            The <see cref="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.MessageId"/> property is an optional argument that specifies additional
+            exclusion where the literal metadata target is not sufficiently precise. For example,
+            the <see cref="T:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute"/> cannot be applied within a method,
+            and it may be desirable to suppress a violation against a statement in the method that will
+            give a rule violation, but not against all statements in the method.
+            </remarks>
+        </member>
+        <member name="P:System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute.Justification">
+            <summary>
+            Gets or sets the justification for suppressing the code analysis message.
+            </summary>
+        </member>
+        <member name="T:System.Diagnostics.UnreachableException">
+            <summary>
+            Exception thrown when the program executes an instruction that was thought to be unreachable.
+            </summary>
+        </member>
+        <member name="M:System.Diagnostics.UnreachableException.#ctor">
+            <summary>
+            Initializes a new instance of the <see cref="T:System.Diagnostics.UnreachableException"/> class with the default error message.
+            </summary>
+        </member>
+        <member name="M:System.Diagnostics.UnreachableException.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:System.Diagnostics.UnreachableException"/>
+            class with a specified error message.
+            </summary>
+            <param name="message">The error message that explains the reason for the exception.</param>
+        </member>
+        <member name="M:System.Diagnostics.UnreachableException.#ctor(System.String,System.Exception)">
+            <summary>
+            Initializes a new instance of the <see cref="T:System.Diagnostics.UnreachableException"/>
+            class with a specified error message and a reference to the inner exception that is the cause of
+            this exception.
+            </summary>
+            <param name="message">The error message that explains the reason for the exception.</param>
+            <param name="innerException">The exception that is the cause of the current exception.</param>
+        </member>
+        <member name="T:ValueTaskExtensions">
+            <summary>
+            Convenience extensions for ValueTask patterns within .netstandard2.0 projects.
+            </summary>
+        </member>
+        <member name="M:ValueTaskExtensions.AsValueTask``1(``0)">
+            <summary>
+            Creates a <see cref="T:System.Threading.Tasks.ValueTask`1"/> that's completed successfully with the specified result.
+            </summary>
+            <example>
+            <c>
+            int value = 33;
+            return value.AsValueTask();
+            </c>
+            </example>
+        </member>
+        <member name="M:ValueTaskExtensions.AsValueTask``1(System.Exception)">
+            <summary>
+            Creates a <see cref="T:System.Threading.Tasks.ValueTask`1"/> that's failed and is associated with an exception.
+            </summary>
+            <example>
+            <c>
+            int value = 33;
+            return value.AsValueTask();
+            </c>
+            </example>
+        </member>
+        <member name="M:ValueTaskExtensions.AsValueTask(System.Threading.Tasks.Task)">
+            <summary>
+            Present a regular task as a ValueTask.
+            </summary>
+            <example>
+            <c>return Task.CompletedTask.AsValueTask();</c>
+            </example>
+        </member>
+    </members>
+</doc>
