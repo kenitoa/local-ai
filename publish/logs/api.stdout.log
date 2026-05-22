@@ -1,5 +1,5 @@
 info: Microsoft.Hosting.Lifetime[14]
-      Now listening on: http://localhost:5096
+      Now listening on: http://localhost:5088
 info: Microsoft.Hosting.Lifetime[0]
       Application started. Press Ctrl+C to shut down.
 info: Microsoft.Hosting.Lifetime[0]
@@ -7,7 +7,7 @@ info: Microsoft.Hosting.Lifetime[0]
 info: Microsoft.Hosting.Lifetime[0]
       Content root path: C:\Users\abc20\Desktop\만든 것들\On-device AI\local-ai\publish\app\api
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
-      Request starting HTTP/1.1 GET http://localhost:5096/api/ready - - -
+      Request starting HTTP/1.1 GET http://localhost:5088/api/ready - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
       Executing endpoint 'HTTP: GET /api/ready'
 info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
@@ -17,9 +17,9 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/ready'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 229.0597ms
+      Request finished HTTP/1.1 GET http://localhost:5088/api/ready - 200 - application/json;+charset=utf-8 168.6283ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
-      Request starting HTTP/1.1 GET http://localhost:5096/api/ready - - -
+      Request starting HTTP/1.1 GET http://localhost:5088/api/ready - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
       Executing endpoint 'HTTP: GET /api/ready'
 info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
@@ -29,9 +29,9 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/ready'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 1.7265ms
+      Request finished HTTP/1.1 GET http://localhost:5088/api/ready - 200 - application/json;+charset=utf-8 6.0590ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
-      Request starting HTTP/1.1 GET http://localhost:5096/api/health - - -
+      Request starting HTTP/1.1 GET http://localhost:5088/api/health - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
       Executing endpoint 'HTTP: GET /api/health'
 info: System.Net.Http.HttpClient.OllamaClient.LogicalHandler[100]
@@ -45,9 +45,9 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/health'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/health - 200 - application/json;+charset=utf-8 2021.0330ms
+      Request finished HTTP/1.1 GET http://localhost:5088/api/health - 200 - application/json;+charset=utf-8 2110.9413ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
-      Request starting HTTP/1.1 GET http://localhost:5096/api/cloud-ai/interface - - -
+      Request starting HTTP/1.1 GET http://localhost:5088/api/cloud-ai/interface - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
       Executing endpoint 'HTTP: GET /api/cloud-ai/interface'
 info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
@@ -57,9 +57,9 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/cloud-ai/interface'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/cloud-ai/interface - 200 - application/json;+charset=utf-8 69.3046ms
+      Request finished HTTP/1.1 GET http://localhost:5088/api/cloud-ai/interface - 200 - application/json;+charset=utf-8 261.7232ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
-      Request starting HTTP/1.1 GET http://localhost:5096/api/market/models - - -
+      Request starting HTTP/1.1 GET http://localhost:5088/api/market/models - - -
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
       Executing endpoint 'HTTP: GET /api/market/models'
 info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
@@ -69,16 +69,32 @@ info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
       Executed endpoint 'HTTP: GET /api/market/models'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/market/models - 200 - application/json;+charset=utf-8 6.9016ms
+      Request finished HTTP/1.1 GET http://localhost:5088/api/market/models - 200 - application/json;+charset=utf-8 7.3476ms
 info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
-      Request starting HTTP/1.1 GET http://localhost:5096/api/ready - - -
+      Request starting HTTP/1.1 GET http://localhost:5088/api/cloud-ai/interface - - -
+info: Microsoft.AspNetCore.Cors.Infrastructure.CorsService[4]
+      CORS policy execution successful.
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
-      Executing endpoint 'HTTP: GET /api/ready'
+      Executing endpoint 'HTTP: GET /api/cloud-ai/interface'
 info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
       Setting HTTP status code 200.
 info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
-      Writing value of type '<>f__AnonymousType0`2' as Json.
+      Writing value of type 'CloudAIInterfaceResponse' as Json.
 info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
-      Executed endpoint 'HTTP: GET /api/ready'
+      Executed endpoint 'HTTP: GET /api/cloud-ai/interface'
 info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
-      Request finished HTTP/1.1 GET http://localhost:5096/api/ready - 200 - application/json;+charset=utf-8 0.2344ms
+      Request finished HTTP/1.1 GET http://localhost:5088/api/cloud-ai/interface - 200 - application/json;+charset=utf-8 9.8592ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://localhost:5088/api/market/models - - -
+info: Microsoft.AspNetCore.Cors.Infrastructure.CorsService[4]
+      CORS policy execution successful.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/market/models'
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
+      Setting HTTP status code 200.
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
+      Writing value of type 'AiMarketModelsResponse' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/market/models'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://localhost:5088/api/market/models - 200 - application/json;+charset=utf-8 20.6356ms
