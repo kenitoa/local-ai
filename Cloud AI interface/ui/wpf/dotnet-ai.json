@@ -1,0 +1,8 @@
+{
+  "name": "WPF Desktop MVP",
+  "version": "0.1.0",
+  "model": "WPF + HttpClient + ASP.NET API",
+  "memory": "API-backed session",
+  "specialty": "Windows-only desktop MVP",
+  "purpose": "Builds a fast Windows desktop UI for chat, settings, model selection, logs, file selection, and NAS path configuration while keeping AI calls behind the ASP.NET API."
+}

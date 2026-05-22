@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="01_Interface\**\*.cs" />
+    <Compile Include="02_RequestNormalization\**\*.cs" />
+    <Compile Include="03_Context\**\*.cs" />
+    <Compile Include="04_Registry\**\*.cs" />
+    <Compile Include="05_Experts\**\*.cs" />
+    <Compile Include="06_Routing\**\*.cs" />
+    <Compile Include="07_Composition\**\*.cs" />
+    <Compile Include="08_Execution\**\*.cs" />
+    <Compile Include="09_Aggregation\**\*.cs" />
+    <Compile Include="10_Verification\**\*.cs" />
+    <Compile Include="11_Recovery\**\*.cs" />
+    <Compile Include="12_Observability\**\*.cs" />
+    <Compile Include="13_Optimization\**\*.cs" />
+    <Compile Include="14_Security\**\*.cs" />
+    <Compile Include="15_MVP\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Configuration\expert-registry.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Configuration\composition-profiles.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Configuration\fallback-chains.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Configuration\expert-permissions.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="runtime\semantic-kernel\LocalAI.Core\LocalAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

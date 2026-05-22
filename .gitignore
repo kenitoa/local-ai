@@ -1,0 +1,28 @@
+.env
+.env.*
+!.env.example
+
+bin/
+obj/
+Cloud AI interface/.build/
+node_modules/
+dist/
+publish/app/
+publish/logs/
+Cloud AI interface/data/projects/
+
+Cloud AI interface/runtime/ollama/server/benchmark-results*.json
+Cloud AI interface/runtime/ollama/server/final-validation-report*.json
+Cloud AI interface/runtime/ollama/server/pull-results.json
+Cloud AI interface/runtime/ollama/server/*.log
+Cloud AI interface/runtime/ollama/server/cli/*
+!Cloud AI interface/runtime/ollama/server/cli/.gitkeep
+Cloud AI interface/runtime/ollama/server/home/*
+!Cloud AI interface/runtime/ollama/server/home/.gitkeep
+Cloud AI interface/runtime/ollama/server/models/*
+!Cloud AI interface/runtime/ollama/server/models/.gitkeep
+
+# Local/generated leftovers that should not be uploaded to GitHub.
+Cloud AI interface/Microsoft/
+Cloud AI interface/Interface/
+Cloud AI interface/local LLM model/

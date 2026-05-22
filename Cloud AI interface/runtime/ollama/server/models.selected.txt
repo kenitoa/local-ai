@@ -1,0 +1,3 @@
+﻿nomic-embed-text
+qwen2.5
+llama3.1

@@ -1,0 +1,36 @@
+<Window x:Class="WpfDesktopMvp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Local AI"
+        Width="1280"
+        Height="820"
+        MinWidth="1024"
+        MinHeight="680"
+        Background="#050808"
+        WindowStartupLocation="CenterScreen">
+  <Grid Background="#050808">
+    <wv2:WebView2 x:Name="DesktopWebView" />
+
+    <Border x:Name="LoadingOverlay"
+            Background="#050808"
+            Padding="28">
+      <StackPanel HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Width="420">
+        <TextBlock Text="Local AI"
+                   Foreground="#F7FAFC"
+                   FontSize="34"
+                   FontWeight="Bold"
+                   TextAlignment="Center" />
+        <TextBlock x:Name="LoadingText"
+                   Margin="0,14,0,0"
+                   Text="desktop interface loading..."
+                   Foreground="#9DB9C8"
+                   FontSize="15"
+                   TextAlignment="Center"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

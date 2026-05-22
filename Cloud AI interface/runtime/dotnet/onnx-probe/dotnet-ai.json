@@ -1,0 +1,8 @@
+{
+  "name": "ONNX Runtime .NET",
+  "version": "1.26.0",
+  "model": "ONNX Runtime",
+  "memory": "Offline probe",
+  "specialty": "ONNX runtime configuration check",
+  "purpose": "Offline-safe probe for checking whether ONNX Runtime payloads are present. Add Microsoft.ML.OnnxRuntime again when NuGet restore is available."
+}
