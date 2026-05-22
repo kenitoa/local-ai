@@ -686,6 +686,19 @@
           "buildTransitive/net8.0/_._": {}
         }
       },
+      "CloudAI.Interface/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "LocalAI.Core": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/CloudAI.Interface.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/CloudAI.Interface.dll": {}
+        }
+      },
       "LocalAI.Core/1.0.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v9.0",
@@ -1980,6 +1993,11 @@
         "useSharedDesignerContext.txt"
       ]
     },
+    "CloudAI.Interface/1.0.0": {
+      "type": "project",
+      "path": "../../../CloudAI.Interface.csproj",
+      "msbuildProject": "../../../CloudAI.Interface.csproj"
+    },
     "LocalAI.Core/1.0.0": {
       "type": "project",
       "path": "../LocalAI.Core/LocalAI.Core.csproj",
@@ -1993,6 +2011,7 @@
   },
   "projectFileDependencyGroups": {
     "net9.0": [
+      "CloudAI.Interface >= 1.0.0",
       "LocalAI.Core >= 1.0.0",
       "LocalAI.OllamaConnector >= 1.0.0"
     ]
@@ -2003,14 +2022,14 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\semantic-kernel\\LocalAI.Api\\LocalAI.Api.csproj",
+      "projectUniqueName": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Api\\LocalAI.Api.csproj",
       "projectName": "LocalAI.Api",
-      "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\semantic-kernel\\LocalAI.Api\\LocalAI.Api.csproj",
+      "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Api\\LocalAI.Api.csproj",
       "packagesPath": "C:\\Users\\abc20\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\semantic-kernel\\LocalAI.Api\\obj\\",
+      "outputPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Api\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\NuGet.Config",
+        "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config",
         "C:\\Users\\abc20\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
@@ -2023,11 +2042,14 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\ollama\\connector\\LocalAI.OllamaConnector.csproj": {
-              "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\ollama\\connector\\LocalAI.OllamaConnector.csproj"
+            "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\CloudAI.Interface.csproj": {
+              "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\CloudAI.Interface.csproj"
             },
-            "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\semantic-kernel\\LocalAI.Core\\LocalAI.Core.csproj": {
-              "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\runtime\\semantic-kernel\\LocalAI.Core\\LocalAI.Core.csproj"
+            "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\ollama\\connector\\LocalAI.OllamaConnector.csproj": {
+              "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\ollama\\connector\\LocalAI.OllamaConnector.csproj"
+            },
+            "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Core\\LocalAI.Core.csproj": {
+              "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Core\\LocalAI.Core.csproj"
             }
           }
         }

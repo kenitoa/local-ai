@@ -10,11 +10,12 @@
         "projectUniqueName": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\CloudAI.Interface.csproj",
         "projectName": "CloudAI.Interface",
         "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\CloudAI.Interface.csproj",
-        "packagesPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages",
+        "packagesPath": "C:\\Users\\abc20\\.nuget\\packages\\",
         "outputPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config"
+          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config",
+          "C:\\Users\\abc20\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -64,27 +65,11 @@
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Host.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.NETCore.App.Ref",
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.NETCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
               "version": "[9.0.15, 9.0.15]"
             }
           ],
@@ -95,11 +80,6 @@
           },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.203/PortableRuntimeIdentifierGraph.json"
         }
-      },
-      "runtimes": {
-        "win-x64": {
-          "#import": []
-        }
       }
     },
     "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\ollama\\connector\\LocalAI.OllamaConnector.csproj": {
@@ -108,11 +88,12 @@
         "projectUniqueName": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\ollama\\connector\\LocalAI.OllamaConnector.csproj",
         "projectName": "LocalAI.OllamaConnector",
         "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\ollama\\connector\\LocalAI.OllamaConnector.csproj",
-        "packagesPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages",
+        "packagesPath": "C:\\Users\\abc20\\.nuget\\packages\\",
         "outputPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\ollama\\connector\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config"
+          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config",
+          "C:\\Users\\abc20\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -172,27 +153,11 @@
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Host.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.NETCore.App.Ref",
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.NETCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
               "version": "[9.0.15, 9.0.15]"
             }
           ],
@@ -203,11 +168,6 @@
           },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.203/PortableRuntimeIdentifierGraph.json"
         }
-      },
-      "runtimes": {
-        "win-x64": {
-          "#import": []
-        }
       }
     },
     "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Core\\LocalAI.Core.csproj": {
@@ -216,11 +176,12 @@
         "projectUniqueName": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Core\\LocalAI.Core.csproj",
         "projectName": "LocalAI.Core",
         "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Core\\LocalAI.Core.csproj",
-        "packagesPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages",
+        "packagesPath": "C:\\Users\\abc20\\.nuget\\packages\\",
         "outputPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\runtime\\semantic-kernel\\LocalAI.Core\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config"
+          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config",
+          "C:\\Users\\abc20\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0"
@@ -284,27 +245,11 @@
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Host.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.NETCore.App.Ref",
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.NETCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
               "version": "[9.0.15, 9.0.15]"
             }
           ],
@@ -314,11 +259,6 @@
             }
           },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.203/PortableRuntimeIdentifierGraph.json"
-        }
-      },
-      "runtimes": {
-        "win-x64": {
-          "#import": []
         }
       }
     }

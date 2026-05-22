@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OnnxRuntimeProbe")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c433b5076f338c3f14121a2444e554c64f36451f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+40c340d7f37c0b3e93128099eae8aeaf582dc6d1")]
 [assembly: System.Reflection.AssemblyProductAttribute("OnnxRuntimeProbe")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OnnxRuntimeProbe")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

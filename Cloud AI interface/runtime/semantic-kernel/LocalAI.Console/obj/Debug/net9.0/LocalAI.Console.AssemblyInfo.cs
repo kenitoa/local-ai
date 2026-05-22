@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("LocalAI.Console")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+058935faeedeba83c8a87322d3fb6862adb8824d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+40c340d7f37c0b3e93128099eae8aeaf582dc6d1")]
 [assembly: System.Reflection.AssemblyProductAttribute("LocalAI.Console")]
 [assembly: System.Reflection.AssemblyTitleAttribute("LocalAI.Console")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

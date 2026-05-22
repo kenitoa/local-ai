@@ -1,17 +1,14 @@
 {
   "version": 2,
-  "dgSpecHash": "SWPgvLBvxfQ=",
+  "dgSpecHash": "MEszRs6IEGY=",
   "success": true,
   "projectFilePath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\ui\\wpf\\WpfDesktopMvp.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.web.webview2\\1.0.3967.48\\microsoft.web.webview2.1.0.3967.48.nupkg.sha512",
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.netcore.app.ref\\9.0.15\\microsoft.netcore.app.ref.9.0.15.nupkg.sha512",
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.netcore.app.runtime.win-x64\\9.0.15\\microsoft.netcore.app.runtime.win-x64.9.0.15.nupkg.sha512",
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.windowsdesktop.app.ref\\9.0.15\\microsoft.windowsdesktop.app.ref.9.0.15.nupkg.sha512",
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.windowsdesktop.app.runtime.win-x64\\9.0.15\\microsoft.windowsdesktop.app.runtime.win-x64.9.0.15.nupkg.sha512",
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.aspnetcore.app.ref\\9.0.15\\microsoft.aspnetcore.app.ref.9.0.15.nupkg.sha512",
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.aspnetcore.app.runtime.win-x64\\9.0.15\\microsoft.aspnetcore.app.runtime.win-x64.9.0.15.nupkg.sha512",
-    "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages\\microsoft.netcore.app.host.win-x64\\9.0.15\\microsoft.netcore.app.host.win-x64.9.0.15.nupkg.sha512"
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.web.webview2\\1.0.3967.48\\microsoft.web.webview2.1.0.3967.48.nupkg.sha512",
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.netcore.app.ref\\9.0.15\\microsoft.netcore.app.ref.9.0.15.nupkg.sha512",
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\9.0.15\\microsoft.windowsdesktop.app.ref.9.0.15.nupkg.sha512",
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\9.0.15\\microsoft.aspnetcore.app.ref.9.0.15.nupkg.sha512",
+    "C:\\Users\\abc20\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\9.0.15\\microsoft.netcore.app.host.win-x64.9.0.15.nupkg.sha512"
   ],
   "logs": []
 }

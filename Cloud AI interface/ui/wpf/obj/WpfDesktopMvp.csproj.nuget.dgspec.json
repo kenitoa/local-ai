@@ -10,11 +10,12 @@
         "projectUniqueName": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\ui\\wpf\\WpfDesktopMvp.csproj",
         "projectName": "WpfDesktopMvp",
         "projectPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\ui\\wpf\\WpfDesktopMvp.csproj",
-        "packagesPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\.build\\nuget-packages",
+        "packagesPath": "C:\\Users\\abc20\\.nuget\\packages\\",
         "outputPath": "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\ui\\wpf\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config"
+          "C:\\Users\\abc20\\Desktop\\만든 것들\\On-device AI\\local-ai\\Cloud AI interface\\NuGet.Config",
+          "C:\\Users\\abc20\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net9.0-windows"
@@ -66,10 +67,6 @@
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.NETCore.App.Host.win-x64",
               "version": "[9.0.15, 9.0.15]"
             },
@@ -78,15 +75,7 @@
               "version": "[9.0.15, 9.0.15]"
             },
             {
-              "name": "Microsoft.NETCore.App.Runtime.win-x64",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[9.0.15, 9.0.15]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
               "version": "[9.0.15, 9.0.15]"
             }
           ],
@@ -99,11 +88,6 @@
             }
           },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.203/PortableRuntimeIdentifierGraph.json"
-        }
-      },
-      "runtimes": {
-        "win-x64": {
-          "#import": []
         }
       }
     }
