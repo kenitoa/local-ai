@@ -1,0 +1,23 @@
+﻿[
+    {
+        "model":  "llama3.1",
+        "status":  "ok",
+        "startedAt":  "2026-05-19T22:36:22.4002786+09:00",
+        "finishedAt":  "2026-05-19T22:38:00.2756799+09:00",
+        "exitCode":  0
+    },
+    {
+        "model":  "nomic-embed-text",
+        "status":  "ok",
+        "startedAt":  "2026-05-19T22:38:00.4009215+09:00",
+        "finishedAt":  "2026-05-19T22:38:15.7576111+09:00",
+        "exitCode":  0
+    },
+    {
+        "model":  "qwen2.5",
+        "status":  "ok",
+        "startedAt":  "2026-05-19T22:38:15.8202638+09:00",
+        "finishedAt":  "2026-05-19T22:39:49.2141339+09:00",
+        "exitCode":  0
+    }
+]
